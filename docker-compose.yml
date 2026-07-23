@@ -1,0 +1,38 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: auto_framing_app
+    ports:
+      - "8080:8000"
+    volumes:
+      - ./models:/workspace/models
+      - ./data:/workspace/data
+      - ./app:/workspace/app
+    environment:
+      - OPENVINO_DEVICE=CPU
+      - MODEL_NAME=yolov8n
+      - LOG_LEVEL=INFO
+    # Mapeo de dispositivos de GPU Intel (opcional para aceleración iGPU UHD 630 en Linux/WSL2)
+    # devices:
+    #   - "/dev/dri:/dev/dri"
+    restart: unless-stopped
+
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["streamlit", "run", "app/ui/streamlit_app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+    container_name: auto_framing_streamlit
+    ports:
+      - "8501:8501"
+    environment:
+      - FASTAPI_URL=http://app:8000
+    volumes:
+      - ./models:/workspace/models
+      - ./data:/workspace/data
+      - ./app:/workspace/app
+    depends_on:
+      - app
+    restart: unless-stopped

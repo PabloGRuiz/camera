@@ -1,0 +1,36 @@
+from typing import List, Union
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
+
+class Settings(BaseSettings):
+    """
+    Configuración global del sistema Object-Centered Tracking & Auto-Framing.
+    Permite anulación mediante variables de entorno o archivo .env.
+    """
+    APP_TITLE: str = "Object-Centered Tracking & Auto-Framing System"
+    APP_VERSION: str = "1.0.0"
+    
+    # Inferencia & Modelo
+    MODEL_NAME: str = "yolov8n"
+    MODEL_PATH: str = "models/yolov8n_openvino_model"
+    OPENVINO_DEVICE: str = Field(default="CPU", description="Dispositivo OpenVINO: CPU, GPU, MYRIAD, etc.")
+    CONFIDENCE_THRESHOLD: float = 0.45
+    DETECTION_PAUSED: bool = False
+    TARGET_CLASSES: Union[List[int], None] = None  # None = Detectar todas las 80 clases COCO (tijeras, personas, autos, etc.)
+    
+    # Auto-Framing & Suavizado
+    DEFAULT_PADDING: float = 0.20       # 20% de padding alrededor del objeto
+    DEFAULT_EMA_ALPHA: float = 0.15     # Alpha de suavizado exponencial (0.01 a 1.0)
+    DEFAULT_ASPECT_RATIO: str = "16:9"  # '16:9', '9:16', '1:1', 'FREE'
+    TARGET_OBJECT_ID: Union[int, None] = None  # None = Seleccionar el más dominante/cercano al centro
+    
+    # Fuente de Video & Stream
+    VIDEO_SOURCE: str = "SYNTHETIC"     # "SYNTHETIC", "0" (webcam), o ruta a un archivo MP4/stream RTSP
+    MAX_FPS: int = 30
+    DRAW_OVERLAYS: bool = True          # Dibujar cajas y vectores en la vista previa
+    OUTPUT_WIDTH: int = 1280
+    OUTPUT_HEIGHT: int = 720
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+settings = Settings()

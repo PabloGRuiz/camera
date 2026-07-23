@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Object-Centered Tracking & Auto-Framing | Intel OpenVINO</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- Navbar -->
+  <header class="navbar">
+    <div class="brand">
+      <div class="brand-icon">CV</div>
+      <div class="brand-title">Auto-Framing AI Core</div>
+    </div>
+    <div class="status-badge">
+      <div class="status-dot"></div>
+      <span>OpenVINO Acelerado</span>
+    </div>
+  </header>
+
+  <!-- Layout Principal -->
+  <main class="container">
+    
+    <!-- Columna Izquierda: Reproductor de Video -->
+    <section class="video-card">
+      <div class="video-header">
+        <h2 class="section-title">Transmisión en Vivo</h2>
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+          <button id="webcamToggleBtn" class="webcam-btn">📷 Activar Webcam Navegador</button>
+          <button id="scanToggleBtn" class="webcam-btn" style="background: #2ecc71;">⚡ Escáner IA: Activo</button>
+          <button id="pipToggleBtn" class="webcam-btn" style="background: #9b59b6;">🖼️ Flotante (PiP)</button>
+          <button id="openDetectorPopoutBtn" class="webcam-btn" style="background: #3498db;">🖥️ Popout Detector</button>
+          <button id="openFramedPopoutBtn" class="webcam-btn" style="background: #1abc9c;">🖥️ Popout Encuadre</button>
+          <div class="mode-selector">
+            <button class="mode-btn active" data-mode="framed">Encuadre Suavizado</button>
+            <button class="mode-btn" data-mode="annotated">Detector Overlay</button>
+            <button class="mode-btn" data-mode="dual">Vista Dividida (Dual)</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="video-view-container">
+        <img id="videoFeed" src="/video_feed?mode=framed" alt="Flujo de video en vivo" class="video-stream-img">
+        <canvas id="outputCanvas" class="video-stream-img" style="display:none;"></canvas>
+        <video id="webcamVideo" autoplay playsinline muted style="position: absolute; opacity: 0.001; pointer-events: none; top: 0; left: 0; width: 100%; height: 100%; z-index: -1;"></video>
+        <canvas id="webcamCanvas" style="display:none;"></canvas>
+        <video id="pipVideo" autoplay playsinline muted style="display:none;"></video>
+        <canvas id="pipCanvas" style="display:none;"></canvas>
+      </div>
+    </section>
+
+    <!-- Columna Derecha: Panel de Control & Telemetría -->
+    <aside class="controls-card">
+      <div>
+        <h2 class="section-title">Controles en Tiempo Real</h2>
+        
+        <!-- Factor EMA Alpha -->
+        <div class="control-group" style="margin-top: 1rem;">
+          <div class="control-label">
+            <span>Suavizado EMA (&alpha;)</span>
+            <span id="emaValue" class="val-badge">0.15</span>
+          </div>
+          <input type="range" id="emaSlider" min="0.01" max="1.0" step="0.01" value="0.15">
+          <span style="font-size: 0.75rem; color: var(--text-muted);">Menor = cámara más suave/estable | Mayor = respuesta más rápida</span>
+        </div>
+
+        <!-- Padding Slider -->
+        <div class="control-group" style="margin-top: 1.2rem;">
+          <div class="control-label">
+            <span>Margen / Padding (%)</span>
+            <span id="paddingValue" class="val-badge">20%</span>
+          </div>
+          <input type="range" id="paddingSlider" min="0" max="60" step="5" value="20">
+        </div>
+
+        <!-- Selección de ID Objetivo -->
+        <div class="control-group" style="margin-top: 1.2rem;">
+          <div class="control-label">
+            <span>ID de Objeto Objetivo</span>
+          </div>
+          <input type="number" id="targetIdInput" placeholder="Automático (-1 u Omitir)" value="-1">
+        </div>
+
+        <!-- Filtro de Categoría de Objeto -->
+        <div class="control-group" style="margin-top: 1.2rem;">
+          <div class="control-label">
+            <span>Objetos a Detectar</span>
+          </div>
+          <select id="targetCategorySelect">
+            <option value="PERSON" selected>👤 Personas (Seguimiento Humano)</option>
+            <option value="OBJECTS">📦 Objetos (Celulares, Tazas, Sillas, Laptops, etc.)</option>
+            <option value="ALL">✨ Todos (Personas + Objetos)</option>
+          </select>
+        </div>
+
+        <!-- Relación de Aspecto -->
+        <div class="control-group" style="margin-top: 1.2rem;">
+          <div class="control-label">
+            <span>Relación de Aspecto (Aspect Ratio)</span>
+          </div>
+          <select id="aspectRatioSelect">
+            <option value="16:9" selected>16:9 (Panorámico)</option>
+            <option value="9:16">9:16 (Vertical / Mobile)</option>
+            <option value="1:1">1:1 (Cuadrado)</option>
+            <option value="FREE">Libre (Adaptativo)</option>
+          </select>
+        </div>
+
+        <!-- Conmutador Overlays -->
+        <div class="control-group" style="margin-top: 1.2rem; display: flex; flex-direction: row; align-items: center; gap: 10px;">
+          <input type="checkbox" id="overlayCheckbox" checked style="width: auto;">
+          <label for="overlayCheckbox" style="font-size: 0.85rem; color: var(--text-muted); cursor: pointer;">Mostrar marcas y retícula en vista previa</label>
+        </div>
+      </div>
+
+      <!-- Sección Telemetría -->
+      <div style="border-top: 1px solid var(--bg-card-border); padding-top: 1.2rem;">
+        <h2 class="section-title">Telemetría del Sistema</h2>
+        <div class="telemetry-grid" style="margin-top: 0.8rem;">
+          <div class="stat-box">
+            <div class="stat-label">Rendimiento</div>
+            <div id="fpsStat" class="stat-val">0 FPS</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Latencia Inferencia</div>
+            <div id="latencyStat" class="stat-val">0 ms</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Objetivo Activo</div>
+            <div id="targetIdStat" class="stat-val">Auto</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">Dispositivo</div>
+            <div id="deviceStat" class="stat-val">CPU</div>
+          </div>
+        </div>
+      </div>
+
+    </aside>
+
+  </main>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
