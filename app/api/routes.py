@@ -11,6 +11,8 @@ from app.core.config import settings
 from app.core.video_stream import VideoStreamReader
 from app.core.detector import OpenVINODetector
 from app.core.auto_framing import AutoFramingEngine
+from app.core.face_db import face_db
+from app.core.face_recognizer import face_recognizer
 
 logger = logging.getLogger("APIRoutes")
 
@@ -131,6 +133,13 @@ def generate_mjpeg_stream(mode: str = "framed"):
                 tracked_objects = detector.detect_and_track(frame, conf=settings.CONFIDENCE_THRESHOLD)
                 infer_latency = (time.time() - start_infer) * 1000.0
 
+                # 1.5 Reconocimiento Facial Biométrico en Sujetos (Personas)
+                for obj in tracked_objects:
+                    if obj.get("class_id") == 0 or obj.get("class_name") == "person":
+                        match_info = face_recognizer.recognize_face_in_bbox(frame, obj["bbox"])
+                        if match_info:
+                            obj["face_identity"] = match_info
+
             # 2. Motor de Auto-Framing y Suavizado EMA
             auto_framed_output, annotated_frame, telemetry = framing_engine.process_frame(
                 frame, tracked_objects, draw_overlay=settings.DRAW_OVERLAYS
@@ -226,6 +235,12 @@ async def process_frame(
     tracked_objects = detector.detect_and_track(frame, conf=settings.CONFIDENCE_THRESHOLD, classes=target_classes)
     infer_latency = (time.time() - start_infer) * 1000.0
 
+    for obj in tracked_objects:
+        if obj.get("class_id") == 0 or obj.get("class_name") == "person":
+            match_info = face_recognizer.recognize_face_in_bbox(frame, obj["bbox"])
+            if match_info:
+                obj["face_identity"] = match_info
+
     auto_framed_output, annotated_frame, telemetry = framing_engine.process_frame(
         frame, tracked_objects, draw_overlay=settings.DRAW_OVERLAYS
     )
@@ -276,3 +291,51 @@ async def video_feed(mode: str = Query("framed", description="Modo de transmisi�
         generate_mjpeg_stream(mode=mode),
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
+
+@router.post("/api/faces/enroll")
+async def enroll_face(
+    name: str = Query(..., description="Nombre completo de la persona"),
+    dni: str = Query(..., description="DNI o Identificador único"),
+    role: Optional[str] = Query("Usuario", description="Rol o categoría (ej. Empleado, VIP)"),
+    file: UploadFile = File(...)
+):
+    """
+    Registra a una persona en la Base de Datos Biométrica extrayendo su vector facial de 128-D.
+    """
+    contents = await file.read()
+    nparr = np.frombuffer(contents, np.uint8)
+    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+    if frame is None:
+        raise HTTPException(status_code=400, detail="Imagen no válida")
+
+    embedding = face_recognizer.extract_embedding(frame)
+    if embedding is None:
+        raise HTTPException(status_code=422, detail="No se detectó ningún rostro claro en la imagen enviada. Intenta de nuevo frente a la cámara.")
+
+    success = face_db.register_person(name=name, dni=dni, role=role, embedding=embedding)
+    if not success:
+        raise HTTPException(status_code=500, detail="Error guardando persona en la base de datos (DNI duplicado o error de BD)")
+
+    return {
+        "status": "success",
+        "message": f"Persona '{name}' (DNI: {dni}) enrolada exitosamente.",
+        "person": {"name": name, "dni": dni, "role": role}
+    }
+
+@router.get("/api/faces/list")
+async def list_faces():
+    """
+    Retorna la lista de todas las personas enroladas en la Base de Datos Biométrica.
+    """
+    return {"persons": face_db.get_all_persons()}
+
+@router.delete("/api/faces/{person_id}")
+async def delete_face(person_id: int):
+    """
+    Elimina a una persona enrolada de la Base de Datos por su ID.
+    """
+    success = face_db.delete_person(person_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Persona no encontrada o error al eliminar")
+    return {"status": "success", "message": f"Persona ID {person_id} eliminada."}

@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     DETECTION_PAUSED: bool = False
     TARGET_CLASSES: Union[List[int], None] = None  # None = Detectar todas las 80 clases COCO (tijeras, personas, autos, etc.)
     
+    # Optimizaciones de Rendimiento
+    FRAME_SKIP: int = 3                 # Ejecuta IA cada N frames (1=Siempre, 3=IA en frame 0, tracker clásico en 1,2)
+    USE_INT8_QUANTIZATION: bool = True  # Exportar modelo a OpenVINO INT8 (vía NNCF)
+    
     # Auto-Framing & Suavizado
     DEFAULT_PADDING: float = 0.20       # 20% de padding alrededor del objeto
     DEFAULT_EMA_ALPHA: float = 0.15     # Alpha de suavizado exponencial (0.01 a 1.0)

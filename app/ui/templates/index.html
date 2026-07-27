@@ -118,8 +118,32 @@
         </div>
       </div>
 
+      <!-- Sección Enrolamiento Facial -->
+      <div style="border-top: 1px solid var(--bg-card-border); padding-top: 1.2rem; margin-top: 1.2rem;">
+        <h2 class="section-title">👤 Enrolamiento Facial Biométrico</h2>
+        <div class="control-group" style="margin-top: 0.8rem;">
+          <input type="text" id="enrollName" placeholder="Nombre completo (ej. Juan Pérez)" style="margin-bottom: 0.5rem;">
+          <input type="text" id="enrollDni" placeholder="DNI / Legajo (ej. 12345678)" style="margin-bottom: 0.5rem;">
+          <select id="enrollRole" style="margin-bottom: 0.5rem;">
+            <option value="Empleado">Empleado</option>
+            <option value="VIP">VIP / Autorizado</option>
+            <option value="Visita">Visita</option>
+          </select>
+          <button id="btnEnrollFace" class="webcam-btn" style="background: #27ae60; width: 100%;">📸 Enrolar Rostro desde Cámara</button>
+          <input type="file" id="enrollPhotoInput" accept="image/*" style="display: none;">
+          <button id="btnEnrollFile" class="webcam-btn" style="background: #2980b9; width: 100%; margin-top: 0.4rem;">📁 Subir Foto de Archivo (JPG/PNG)</button>
+        </div>
+
+        <div style="margin-top: 1rem;">
+          <h3 style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">Personas Registradas</h3>
+          <div id="enrolledFacesList" style="max-height: 140px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Sin personas registradas aún</span>
+          </div>
+        </div>
+      </div>
+
       <!-- Sección Telemetría -->
-      <div style="border-top: 1px solid var(--bg-card-border); padding-top: 1.2rem;">
+      <div style="border-top: 1px solid var(--bg-card-border); padding-top: 1.2rem; margin-top: 1.2rem;">
         <h2 class="section-title">Telemetría del Sistema</h2>
         <div class="telemetry-grid" style="margin-top: 0.8rem;">
           <div class="stat-box">
@@ -145,6 +169,6 @@
 
   </main>
 
-  <script src="/static/js/app.js"></script>
+  <script src="/static/js/app.js?v=1.0.3"></script>
 </body>
 </html>

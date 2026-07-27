@@ -301,4 +301,171 @@ document.addEventListener('DOMContentLoaded', () => {
 
   setInterval(fetchStatus, 1000);
   fetchStatus();
+
+  // --- LÓGICA DE ENROLAMIENTO FACIAL Y GESTIÓN ---
+  const btnEnrollFace = document.getElementById('btnEnrollFace');
+  const enrollName = document.getElementById('enrollName');
+  const enrollDni = document.getElementById('enrollDni');
+  const enrollRole = document.getElementById('enrollRole');
+  const enrolledFacesList = document.getElementById('enrolledFacesList');
+
+  async function loadEnrolledFaces() {
+    if (!enrolledFacesList) return;
+    try {
+      const res = await fetch('/api/faces/list');
+      if (res.ok) {
+        const data = await res.json();
+        enrolledFacesList.innerHTML = '';
+        if (!data.persons || data.persons.length === 0) {
+          enrolledFacesList.innerHTML = '<span style="font-size:0.75rem; color:var(--text-muted);">Sin personas registradas aún</span>';
+          return;
+        }
+
+        data.persons.forEach(p => {
+          const item = document.createElement('div');
+          item.style.cssText = 'display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:6px 10px; border-radius:6px; font-size:0.8rem;';
+          item.innerHTML = `
+            <div>
+              <strong style="color:#00ffe0;">${p.name}</strong> 
+              <span style="color:var(--text-muted); font-size:0.75rem;">(DNI: ${p.dni} - ${p.role})</span>
+            </div>
+            <button class="btn-delete-face" data-id="${p.id}" style="background:#e74c3c; border:none; color:white; border-radius:4px; padding:2px 6px; cursor:pointer; font-size:0.7rem;">🗑️</button>
+          `;
+          enrolledFacesList.appendChild(item);
+        });
+
+        document.querySelectorAll('.btn-delete-face').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            const id = e.target.getAttribute('data-id');
+            if (confirm(`¿Eliminar la persona registrada ID #${id}?`)) {
+              await fetch(`/api/faces/${id}`, { method: 'DELETE' });
+              loadEnrolledFaces();
+            }
+          });
+        });
+      } else {
+        enrolledFacesList.innerHTML = '<span style="font-size:0.75rem; color:var(--text-muted);">Sin personas registradas aún</span>';
+      }
+    } catch (err) {
+      console.warn('Error cargando lista de rostros enrolados:', err);
+      enrolledFacesList.innerHTML = '<span style="font-size:0.75rem; color:var(--text-muted);">Sin personas registradas aún</span>';
+    }
+  }
+
+  if (btnEnrollFace) {
+    btnEnrollFace.addEventListener('click', async () => {
+      const name = enrollName.value.trim();
+      const dni = enrollDni.value.trim();
+      const role = enrollRole.value;
+
+      if (!name || !dni) {
+        alert('Por favor ingresa el Nombre completo y el DNI para enrolar a la persona.');
+        return;
+      }
+
+      btnEnrollFace.disabled = true;
+      btnEnrollFace.textContent = '⏳ Extrayendo Rostro...';
+
+      // Capturar fotograma actual de la webcam o canvas
+      let canvasToUse = webcamCanvas;
+      if (!isWebcamActive || !webcamCanvas.width) {
+        // Si la webcam del navegador no está activa, intentar crear canvas desde el videoFeed de la demo
+        canvasToUse = document.createElement('canvas');
+        canvasToUse.width = videoFeed.naturalWidth || 1280;
+        canvasToUse.height = videoFeed.naturalHeight || 720;
+        const cCtx = canvasToUse.getContext('2d');
+        cCtx.drawImage(videoFeed, 0, 0, canvasToUse.width, canvasToUse.height);
+      }
+
+      canvasToUse.toBlob(async (blob) => {
+        if (!blob) {
+          alert('Error capturando la imagen para enrolamiento.');
+          btnEnrollFace.disabled = false;
+          btnEnrollFace.textContent = '📸 Enrolar Rostro desde Cámara';
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', blob, 'enroll.jpg');
+
+        try {
+          const res = await fetch(`/api/faces/enroll?name=${encodeURIComponent(name)}&dni=${encodeURIComponent(dni)}&role=${encodeURIComponent(role)}`, {
+            method: 'POST',
+            body: formData
+          });
+
+          const data = await res.json();
+          if (res.ok) {
+            alert(`✅ ${data.message}`);
+            enrollName.value = '';
+            enrollDni.value = '';
+            loadEnrolledFaces();
+          } else {
+            alert(`⚠️ No se pudo enrolar: ${data.detail || 'Verifica que tu cara sea visible frente a la cámara.'}`);
+          }
+        } catch (err) {
+          alert('Error de conexión enviando foto de enrolamiento: ' + err.message);
+        } finally {
+          btnEnrollFace.disabled = false;
+          btnEnrollFace.textContent = '📸 Enrolar Rostro desde Cámara';
+        }
+      }, 'image/jpeg', 0.95);
+    });
+  }
+
+  // Enrolamiento mediante Subida de Foto de Archivo (JPG/PNG)
+  const btnEnrollFile = document.getElementById('btnEnrollFile');
+  const enrollPhotoInput = document.getElementById('enrollPhotoInput');
+
+  if (btnEnrollFile && enrollPhotoInput) {
+    btnEnrollFile.addEventListener('click', () => {
+      const name = enrollName.value.trim();
+      const dni = enrollDni.value.trim();
+      if (!name || !dni) {
+        alert('Por favor ingresa el Nombre completo y el DNI antes de elegir la foto.');
+        return;
+      }
+      enrollPhotoInput.click();
+    });
+
+    enrollPhotoInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const name = enrollName.value.trim();
+      const dni = enrollDni.value.trim();
+      const role = enrollRole.value;
+
+      btnEnrollFile.disabled = true;
+      btnEnrollFile.textContent = '⏳ Procesando Foto...';
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const res = await fetch(`/api/faces/enroll?name=${encodeURIComponent(name)}&dni=${encodeURIComponent(dni)}&role=${encodeURIComponent(role)}`, {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          alert(`✅ ${data.message}`);
+          enrollName.value = '';
+          enrollDni.value = '';
+          enrollPhotoInput.value = '';
+          loadEnrolledFaces();
+        } else {
+          alert(`⚠️ No se pudo enrolar la foto: ${data.detail || 'Asegúrate de que la foto contenga un rostro claro y visible.'}`);
+        }
+      } catch (err) {
+        alert('Error enviando la foto de enrolamiento: ' + err.message);
+      } finally {
+        btnEnrollFile.disabled = false;
+        btnEnrollFile.textContent = '📁 Subir Foto de Archivo (JPG/PNG)';
+      }
+    });
+  }
+
+  loadEnrolledFaces();
 });

@@ -18,6 +18,7 @@ WORKDIR /workspace
 
 # Copiar e instalar dependencias de Python
 COPY requirements.txt .
+RUN pip install --default-timeout=1000 --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copiar la estructura del código del proyecto
@@ -29,5 +30,5 @@ RUN mkdir -p /workspace/models /workspace/data
 EXPOSE 8000
 EXPOSE 8501
 
-# Comando por defecto: exporta el modelo YOLOv8 a OpenVINO e inicia FastAPI
-CMD ["bash", "-c", "python scripts/export_model.py && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
+# Comando por defecto: inicia el servidor FastAPI inmediatamente (el modelo se carga/exporta dinámicamente)
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

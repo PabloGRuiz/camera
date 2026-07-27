@@ -215,7 +215,11 @@ class AutoFramingEngine:
             out_center_x, out_center_y = out_w // 2, out_h // 2
             cv2.drawMarker(auto_framed_output, (out_center_x, out_center_y), (0, 255, 180), cv2.MARKER_CROSS, 24, 2)
             if target_obj:
-                tgt_label = f"TARGET ID:{target_obj.get('track_id')} ({target_obj.get('class_name')})"
+                face_id = target_obj.get("face_identity")
+                if face_id:
+                    tgt_label = f"IDENTIFICADO: {face_id['name']} ({face_id['similarity']}%)"
+                else:
+                    tgt_label = f"TARGET ID:{target_obj.get('track_id')} ({target_obj.get('class_name')})"
                 cv2.putText(auto_framed_output, tgt_label, (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 180), 2)
             else:
                 cv2.putText(auto_framed_output, f"AUTO-FRAME ({self.aspect_ratio})", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 230, 0), 2)
@@ -245,19 +249,26 @@ class AutoFramingEngine:
         for obj in tracked_objects:
             track_id = obj.get("track_id")
             cls_name = obj.get("class_name", "obj")
+            face_id = obj.get("face_identity")
             x1, y1, x2, y2 = [int(c) for c in obj["bbox"]]
             is_target = (target_obj is not None) and (track_id == target_obj.get("track_id"))
 
             color = (0, 255, 0) if is_target else (180, 180, 180)
             thickness = 3 if is_target else 1
 
+            # Si hay reconocimiento facial, cambiar color a Verde Neón o Azul y mostrar etiqueta biométrica
+            if face_id:
+                color = (0, 255, 120)  # Verde esmeralda para coincidencia
+                label = f"ID:{track_id} {face_id['name']} ({face_id['similarity']}%)"
+            else:
+                label = f"ID:{track_id} {cls_name}" if track_id else f"{cls_name}"
+
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness)
-            label = f"ID:{track_id} {cls_name}" if track_id else f"{cls_name}"
             
             # Fondo para etiqueta
             (w, h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-            cv2.rectangle(frame, (x1, y1 - 20), (x1 + w, y1), color, -1)
-            cv2.putText(frame, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+            cv2.rectangle(frame, (x1, y1 - 22), (x1 + w + 10, y1), color, -1)
+            cv2.putText(frame, label, (x1 + 5, y1 - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, cv2.LINE_AA)
 
         # Dibujar centroide suavizado
         if self.smooth_cx is not None and self.smooth_cy is not None:

@@ -19,28 +19,42 @@ class OpenVINODetector:
         self.device = device or settings.OPENVINO_DEVICE
         self.model = None
         self.is_synthetic_mode = False
-        
-        self._load_model()
+        self.is_loaded = False
+        self.frame_counter = 0
+        self.active_trackers = []
+        self.use_int8 = getattr(settings, "USE_INT8_QUANTIZATION", False)
 
     def _load_model(self):
-        try:
-            model_dir = Path(settings.MODEL_PATH)
-            if not model_dir.exists() or not any(model_dir.iterdir()):
-                logger.info("Modelo OpenVINO no encontrado en disco. Ejecutando exportación automática...")
-                export_yolo_to_openvino(model_name=self.model_name, output_dir="models")
+        base_model_dir = Path(settings.MODEL_PATH).parent
+        
+        # Intentar cargar INT8 si está configurado, o FP32 como fallback
+        modes_to_try = [self.use_int8, False] if self.use_int8 else [False]
+        
+        for try_int8 in modes_to_try:
+            try:
+                suffix = "_int8" if try_int8 else ""
+                model_dir = base_model_dir / f"{self.model_name}_openvino{suffix}_model"
+                
+                if not model_dir.exists() or not any(model_dir.iterdir()):
+                    logger.info(f"Modelo OpenVINO (int8={try_int8}) no encontrado en {model_dir}. Exportando...")
+                    export_yolo_to_openvino(model_name=self.model_name, output_dir=str(base_model_dir), use_int8=try_int8)
 
-            from ultralytics import YOLO
-            logger.info(f"Cargando modelo OpenVINO desde: {model_dir.resolve()} en dispositivo: {self.device}")
-            self.model = YOLO(str(model_dir), task="detect")
+                from ultralytics import YOLO
+                logger.info(f"Cargando modelo OpenVINO desde: {model_dir.resolve()} en dispositivo: {self.device}")
+                self.model = YOLO(str(model_dir), task="detect")
 
-            # Calentamiento (warmup) para pre-compilar el grafo OpenVINO en CPU
-            logger.info("Ejecutando warmup para compilar OpenVINO IR en CPU...")
-            dummy_frame = np.zeros((640, 640, 3), dtype=np.uint8)
-            self.model.predict(source=dummy_frame, device=self.device.lower(), verbose=False)
-            logger.info("Modelo OpenVINO compilado y listo para inferencia en tiempo real.")
-        except Exception as e:
-            logger.error(f"Error cargando modelo OpenVINO: {e}. Activando detector en modo simulado para pruebas de desarrollo.", exc_info=True)
-            self.is_synthetic_mode = True
+                # Calentamiento (warmup)
+                logger.info("Ejecutando warmup en CPU...")
+                dummy_frame = np.zeros((640, 640, 3), dtype=np.uint8)
+                self.model.predict(source=dummy_frame, device=self.device.lower(), verbose=False)
+                logger.info("Modelo OpenVINO compilado y listo para inferencia en tiempo real.")
+                self.is_synthetic_mode = False
+                return
+            except Exception as e:
+                logger.warning(f"Error cargando modelo OpenVINO (int8={try_int8}): {e}")
+
+        logger.error("No se pudo cargar ningún modelo OpenVINO. Activando modo sintético de respaldo.")
+        self.is_synthetic_mode = True
 
     def detect_and_track(self, frame: np.ndarray, tracker_type: str = "bytetrack.yaml",
                          conf: float = 0.35, classes: List[int] = None) -> List[Dict[str, Any]]:
@@ -48,8 +62,32 @@ class OpenVINODetector:
         Ejecuta detección y seguimiento ByteTrack sobre el fotograma.
         Retorna una lista de objetos detectados con: track_id, class_id, class_name, confidence, bbox [x1, y1, x2, y2].
         """
+        if not self.is_loaded and not self.is_synthetic_mode:
+            self._load_model()
+            self.is_loaded = True
+
         if self.is_synthetic_mode or frame is None:
             return self._synthetic_tracking(frame)
+
+        frame_skip = getattr(settings, "FRAME_SKIP", 1)
+        
+        if self.frame_counter % frame_skip != 0:
+            # Usar trackers rápidos de OpenCV (Frame Skipped)
+            tracked_objects = []
+            for t_info in self.active_trackers:
+                tracker = t_info["tracker"]
+                success, bbox = tracker.update(frame)
+                if success:
+                    x, y, w, h = bbox
+                    tracked_objects.append({
+                        "track_id": t_info["track_id"],
+                        "class_id": t_info["class_id"],
+                        "class_name": t_info["class_name"],
+                        "confidence": t_info["confidence"],
+                        "bbox": [x, y, x + w, y + h]
+                    })
+            self.frame_counter += 1
+            return tracked_objects
 
         try:
             classes_filter = classes if classes is not None else settings.TARGET_CLASSES
@@ -66,6 +104,8 @@ class OpenVINODetector:
             )
 
             tracked_objects = []
+            new_active_trackers = []
+            
             if results and len(results) > 0:
                 boxes = results[0].boxes
                 if boxes is not None and len(boxes) > 0:
@@ -87,11 +127,30 @@ class OpenVINODetector:
                             "confidence": round(confidence, 3),
                             "bbox": [round(c, 1) for c in xyxy]
                         })
+                        
+                        # Inicializar KCF Tracker para el objeto
+                        try:
+                            tracker = cv2.TrackerKCF_create()
+                            x1, y1, x2, y2 = xyxy
+                            bbox_tuple = (int(x1), int(y1), int(x2-x1), int(y2-y1))
+                            tracker.init(frame, bbox_tuple)
+                            new_active_trackers.append({
+                                "tracker": tracker,
+                                "track_id": track_id,
+                                "class_id": cls_id,
+                                "class_name": cls_name,
+                                "confidence": round(confidence, 3)
+                            })
+                        except Exception as te:
+                            logger.debug(f"Error inicializando KCF Tracker: {te}")
 
+            self.active_trackers = new_active_trackers
+            self.frame_counter += 1
             return tracked_objects
 
         except Exception as e:
             logger.warning(f"Excepción en inferencia OpenVINO track: {e}.")
+            self.frame_counter += 1
             return []
 
     def _synthetic_tracking(self, frame: np.ndarray) -> List[Dict[str, Any]]:
