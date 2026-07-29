@@ -130,6 +130,22 @@ async def get_logs():
     """Devuelve los últimos 10 eventos/capturas registrados en Base64."""
     return list(event_logs)
 
+@router.delete("/api/logs/{log_index}")
+async def delete_log(log_index: int):
+    """Elimina una captura específica del registro de eventos en memoria (Modo Pruebas)."""
+    if 0 <= log_index < len(event_logs):
+        del event_logs[log_index]
+        return {"status": "success", "message": f"Captura #{log_index} eliminada."}
+    raise HTTPException(status_code=404, detail="Índice de captura no encontrado")
+
+@router.delete("/api/logs")
+async def clear_all_logs():
+    """Vacía todo el historial del registro de capturas en memoria (Modo Pruebas)."""
+    event_logs.clear()
+    logged_track_ids.clear()
+    last_logged_times.clear()
+    return {"status": "success", "message": "Historial de capturas vaciado."}
+
 def _log_person_capture(t_id: int, frame: np.ndarray, bbox: List[float], match_info: dict):
     now = time.time()
     name = match_info.get("name", "Desconocido")

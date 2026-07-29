@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Object-Centered Tracking & Auto-Framing | Intel OpenVINO</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=1.0.11">
+  <link rel="stylesheet" href="/static/css/style.css?v=1.0.12">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -59,7 +59,10 @@
 
       <!-- Registro de Capturas (Event Logs) Compacto -->
       <div class="logs-compact-container">
-        <h3 class="section-title" style="font-size: 0.95rem; margin-top: 10px;">Capturas Recientes</h3>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h3 class="section-title" style="font-size: 0.95rem; margin-top: 10px;">Capturas Recientes</h3>
+          <button id="btnClearLogsBtn" style="background: rgba(231, 76, 60, 0.15); border: 1px solid #e74c3c; color: #e74c3c; font-size: 0.75rem; padding: 3px 8px; border-radius: 4px; cursor: pointer;">Vaciar Historial</button>
+        </div>
         <div id="eventLogsContainer" class="logs-horizontal-scroll" style="display: grid !important; grid-template-columns: repeat(5, 1fr) !important; gap: 10px !important; margin-top: 10px;">
           <!-- Tarjetas generadas dinámicamente -->
           <span style="font-size: 0.85rem; color: var(--text-muted); padding: 10px;">Esperando eventos de cámara...</span>
@@ -226,6 +229,9 @@
           <button id="btnModalEnroll" class="webcam-btn" style="background: #27ae60; font-size: 0.8rem; padding: 6px 14px;">Registrar e Identificar</button>
         </div>
       </div>
+
+      <!-- Eliminar Captura Individual -->
+      <button id="btnDeleteCurrentLog" style="background: rgba(231, 76, 60, 0.15); border: 1px solid #e74c3c; color: #e74c3c; font-size: 0.8rem; padding: 6px 12px; border-radius: 4px; cursor: pointer; margin-top: 12px; width: 100%;">Eliminar esta Captura del Registro</button>
     </div>
   </div>
 
@@ -311,6 +317,6 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=1.0.11"></script>
+  <script src="/static/js/app.js?v=1.0.12"></script>
 </body>
 </html>

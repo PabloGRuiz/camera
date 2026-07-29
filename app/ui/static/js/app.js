@@ -658,7 +658,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
           }
           
-          logs.forEach(log => {
+          logs.forEach((log, index) => {
             const card = document.createElement('div');
             
             // Determinar color por estado
@@ -668,7 +668,7 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (log.status === 'Empleado') badgeColor = '#2ecc71';
             
             card.className = 'compact-log-card';
-            card.onclick = () => window.openModal(log.image, log.name, log.status, log.timestamp, badgeColor);
+            card.onclick = () => window.openModal(log.image, log.name, log.status, log.timestamp, badgeColor, index);
 
             card.innerHTML = `
               <img src="${log.image}" alt="Captura">
@@ -686,6 +686,31 @@ document.addEventListener('DOMContentLoaded', () => {
   if (eventLogsContainer) {
     setInterval(fetchLogs, 2000);
     fetchLogs();
+  }
+
+  // Vaciar todo el historial de capturas
+  const btnClearLogsBtn = document.getElementById('btnClearLogsBtn');
+  if (btnClearLogsBtn) {
+    btnClearLogsBtn.addEventListener('click', async () => {
+      if (confirm('¿Vaciar todo el historial de capturas del registro?')) {
+        await fetch('/api/logs', { method: 'DELETE' });
+        lastLogsHash = '';
+        fetchLogs();
+      }
+    });
+  }
+
+  // Eliminar captura individual desde el modal
+  const btnDeleteCurrentLog = document.getElementById('btnDeleteCurrentLog');
+  if (btnDeleteCurrentLog) {
+    btnDeleteCurrentLog.addEventListener('click', async () => {
+      if (currentLogIndex !== null && currentLogIndex >= 0) {
+        await fetch(`/api/logs/${currentLogIndex}`, { method: 'DELETE' });
+        window.closeModal();
+        lastLogsHash = '';
+        fetchLogs();
+      }
+    });
   }
 
   const aboutBtn = document.getElementById('aboutBtn');
@@ -734,6 +759,7 @@ document.addEventListener('DOMContentLoaded', () => {
           if (dniInput) dniInput.value = '';
           window.closeModal();
           loadEnrolledFaces();
+          lastLogsHash = '';
           fetchLogs();
         } else {
           alert(`No se pudo enrolar desde la captura: ${data.detail || 'Asegúrate de que la captura muestre un rostro nítido.'}`);
@@ -749,12 +775,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
 });
 
-// Global state for modal capture image
+// Global state for modal capture image and log index
 let currentModalImageB64 = '';
+let currentLogIndex = null;
 
 // Modal Logic
-window.openModal = function(imgSrc, name, status, time, badgeColor) {
+window.openModal = function(imgSrc, name, status, time, badgeColor, index) {
   currentModalImageB64 = imgSrc;
+  currentLogIndex = (typeof index === 'number') ? index : null;
   document.getElementById('modalImage').src = imgSrc;
   document.getElementById('modalCaption').innerHTML = `
     <strong style="color:#fff; font-size:1.2rem;">${name}</strong> 
