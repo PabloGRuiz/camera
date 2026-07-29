@@ -16,7 +16,8 @@ class Settings(BaseSettings):
     OPENVINO_DEVICE: str = Field(default="CPU", description="Dispositivo OpenVINO: CPU, GPU, MYRIAD, etc.")
     CONFIDENCE_THRESHOLD: float = 0.45
     DETECTION_PAUSED: bool = False
-    TARGET_CLASSES: Union[List[int], None] = None  # None = Detectar todas las 80 clases COCO (tijeras, personas, autos, etc.)
+    TARGET_CLASSES: Union[List[int], None] = [0]  # [0] = Solo Personas por defecto
+    ENABLE_SYMBOL_RECOGNITION: bool = False       # Desactivado por defecto para evitar falsos positivos con objetos
     
     # Optimizaciones de Rendimiento
     FRAME_SKIP: int = 3                 # Ejecuta IA cada N frames (1=Siempre, 3=IA en frame 0, tracker clásico en 1,2)
@@ -30,7 +31,7 @@ class Settings(BaseSettings):
     
     # Fuente de Video & Stream
     VIDEO_SOURCE: str = "SYNTHETIC"     # "SYNTHETIC", "0" (webcam), o ruta a un archivo MP4/stream RTSP
-    MAX_FPS: int = 30
+    MAX_FPS: int = 10
     DRAW_OVERLAYS: bool = True          # Dibujar cajas y vectores en la vista previa
     OUTPUT_WIDTH: int = 1280
     OUTPUT_HEIGHT: int = 720

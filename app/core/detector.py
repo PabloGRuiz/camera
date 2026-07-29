@@ -21,7 +21,7 @@ class OpenVINODetector:
         self.is_synthetic_mode = False
         self.is_loaded = False
         self.frame_counter = 0
-        self.active_trackers = []
+        self.active_trackers = {}  # Dict for track_id -> dict of state
         self.use_int8 = getattr(settings, "USE_INT8_QUANTIZATION", False)
 
     def _load_model(self):
@@ -72,20 +72,22 @@ class OpenVINODetector:
         frame_skip = getattr(settings, "FRAME_SKIP", 1)
         
         if self.frame_counter % frame_skip != 0:
-            # Usar trackers rápidos de OpenCV (Frame Skipped)
+            # Linear Extrapolation (Frame Skipped) - O(1) update
             tracked_objects = []
-            for t_info in self.active_trackers:
-                tracker = t_info["tracker"]
-                success, bbox = tracker.update(frame)
-                if success:
-                    x, y, w, h = bbox
-                    tracked_objects.append({
-                        "track_id": t_info["track_id"],
-                        "class_id": t_info["class_id"],
-                        "class_name": t_info["class_name"],
-                        "confidence": t_info["confidence"],
-                        "bbox": [x, y, x + w, y + h]
-                    })
+            for track_id, t_info in self.active_trackers.items():
+                # Extrapolate position using velocity
+                t_info["bbox"][0] += t_info["vx"]
+                t_info["bbox"][1] += t_info["vy"]
+                t_info["bbox"][2] += t_info["vx"]
+                t_info["bbox"][3] += t_info["vy"]
+                
+                tracked_objects.append({
+                    "track_id": track_id,
+                    "class_id": t_info["class_id"],
+                    "class_name": t_info["class_name"],
+                    "confidence": t_info["confidence"],
+                    "bbox": [round(c, 1) for c in t_info["bbox"]]
+                })
             self.frame_counter += 1
             return tracked_objects
 
@@ -104,7 +106,7 @@ class OpenVINODetector:
             )
 
             tracked_objects = []
-            new_active_trackers = []
+            new_active_trackers = {}
             
             if results and len(results) > 0:
                 boxes = results[0].boxes
@@ -128,21 +130,24 @@ class OpenVINODetector:
                             "bbox": [round(c, 1) for c in xyxy]
                         })
                         
-                        # Inicializar KCF Tracker para el objeto
-                        try:
-                            tracker = cv2.TrackerKCF_create()
-                            x1, y1, x2, y2 = xyxy
-                            bbox_tuple = (int(x1), int(y1), int(x2-x1), int(y2-y1))
-                            tracker.init(frame, bbox_tuple)
-                            new_active_trackers.append({
-                                "tracker": tracker,
+                        # Calculate velocity if track already existed
+                        vx, vy = 0.0, 0.0
+                        if track_id is not None and isinstance(self.active_trackers, dict) and track_id in self.active_trackers:
+                            old_bbox = self.active_trackers[track_id]["bbox"]
+                            # Center velocity per frame skip interval
+                            vx = (xyxy[0] - old_bbox[0]) / frame_skip
+                            vy = (xyxy[1] - old_bbox[1]) / frame_skip
+                        
+                        if track_id is not None:
+                            new_active_trackers[track_id] = {
                                 "track_id": track_id,
                                 "class_id": cls_id,
                                 "class_name": cls_name,
-                                "confidence": round(confidence, 3)
-                            })
-                        except Exception as te:
-                            logger.debug(f"Error inicializando KCF Tracker: {te}")
+                                "confidence": round(confidence, 3),
+                                "bbox": list(xyxy),
+                                "vx": vx,
+                                "vy": vy
+                            }
 
             self.active_trackers = new_active_trackers
             self.frame_counter += 1

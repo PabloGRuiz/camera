@@ -83,7 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
           if (outputCanvas) outputCanvas.style.display = 'none';
 
           webcamToggleBtn.classList.add('active');
-          webcamToggleBtn.textContent = '⏹️ Detener Webcam';
+          webcamToggleBtn.textContent = 'Detener Webcam';
           
           updateStreamUrl();
           startWebcamLoop();
@@ -97,16 +97,84 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Transmisión de Pantalla / Pestaña del Navegador (Screen Sharing)
+  let isScreenShareActive = false;
+  let screenStream = null;
+  const screenShareToggleBtn = document.getElementById('screenShareToggleBtn');
+
+  if (screenShareToggleBtn) {
+    screenShareToggleBtn.addEventListener('click', async () => {
+      if (!isScreenShareActive) {
+        try {
+          if (isWebcamActive) stopWebcam();
+
+          screenStream = await navigator.mediaDevices.getDisplayMedia({
+            video: { cursor: "always" },
+            audio: false
+          });
+
+          webcamVideo.srcObject = screenStream;
+          await webcamVideo.play();
+          await new Promise(r => setTimeout(r, 200));
+
+          isScreenShareActive = true;
+          isWebcamActive = true;
+
+          if (videoFeed) videoFeed.style.display = 'block';
+          if (outputCanvas) outputCanvas.style.display = 'none';
+
+          screenShareToggleBtn.classList.add('active');
+          screenShareToggleBtn.textContent = 'Detener Transmisión Pantalla';
+
+          // Detectar cuando el usuario presiona "Dejar de compartir" en la barra nativa del navegador
+          screenStream.getVideoTracks()[0].addEventListener('ended', () => {
+            stopScreenShare();
+          });
+
+          updateStreamUrl();
+          startWebcamLoop();
+        } catch (err) {
+          if (err.name !== 'NotAllowedError') {
+            alert('No se pudo compartir la pantalla: ' + err.message);
+          }
+          stopScreenShare();
+        }
+      } else {
+        stopScreenShare();
+      }
+    });
+  }
+
+  function stopScreenShare() {
+    isScreenShareActive = false;
+    isWebcamActive = false;
+    webcamLoopActive = false;
+    if (screenStream) {
+      screenStream.getTracks().forEach(track => track.stop());
+      screenStream = null;
+    }
+    if (screenShareToggleBtn) {
+      screenShareToggleBtn.classList.remove('active');
+      screenShareToggleBtn.textContent = 'Transmitir Pantalla / Pestaña';
+    }
+    if (outputCanvas) outputCanvas.style.display = 'none';
+    if (videoFeed) videoFeed.style.display = 'block';
+    updateStreamUrl();
+  }
+
   function stopWebcam() {
     isWebcamActive = false;
     webcamLoopActive = false;
+    if (screenStream) {
+      stopScreenShare();
+    }
     if (webcamStream) {
       webcamStream.getTracks().forEach(track => track.stop());
       webcamStream = null;
     }
     if (webcamToggleBtn) {
       webcamToggleBtn.classList.remove('active');
-      webcamToggleBtn.textContent = '📷 Activar Webcam Navegador';
+      webcamToggleBtn.textContent = 'Activar Webcam Navegador';
     }
     if (outputCanvas) outputCanvas.style.display = 'none';
     if (videoFeed) videoFeed.style.display = 'block';
@@ -450,22 +518,273 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const data = await res.json();
         if (res.ok) {
-          alert(`✅ ${data.message}`);
+          alert(`${data.message}`);
           enrollName.value = '';
           enrollDni.value = '';
           enrollPhotoInput.value = '';
           loadEnrolledFaces();
         } else {
-          alert(`⚠️ No se pudo enrolar la foto: ${data.detail || 'Asegúrate de que la foto contenga un rostro claro y visible.'}`);
+          alert(`No se pudo enrolar la foto: ${data.detail || 'Asegúrate de que la foto contenga un rostro claro y visible.'}`);
         }
       } catch (err) {
         alert('Error enviando la foto de enrolamiento: ' + err.message);
       } finally {
         btnEnrollFile.disabled = false;
-        btnEnrollFile.textContent = '📁 Subir Foto de Archivo (JPG/PNG)';
+        btnEnrollFile.textContent = 'Subir Foto de Archivo (JPG/PNG)';
       }
     });
   }
 
   loadEnrolledFaces();
+
+  // Enrolamiento de Símbolos e Insignias
+  const btnEnrollSymbolFile = document.getElementById('btnEnrollSymbolFile');
+  const symbolPhotoInput = document.getElementById('symbolPhotoInput');
+  const symbolName = document.getElementById('symbolName');
+  const symbolCategory = document.getElementById('symbolCategory');
+  const enrolledSymbolsList = document.getElementById('enrolledSymbolsList');
+
+  async function loadEnrolledSymbols() {
+    if (!enrolledSymbolsList) return;
+    try {
+      const res = await fetch('/api/symbols/list');
+      if (res.ok) {
+        const data = await res.json();
+        const symbols = data.symbols || [];
+        enrolledSymbolsList.innerHTML = '';
+
+        if (symbols.length === 0) {
+          enrolledSymbolsList.innerHTML = '<span style="font-size: 0.75rem; color: var(--text-muted);">Sin símbolos registrados aún</span>';
+          return;
+        }
+
+        symbols.forEach(s => {
+          const item = document.createElement('div');
+          item.style.display = 'flex';
+          item.style.justifyContent = 'space-between';
+          item.style.alignItems = 'center';
+          item.style.background = 'rgba(0, 0, 0, 0.3)';
+          item.style.padding = '4px 8px';
+          item.style.borderRadius = '4px';
+          item.style.fontSize = '0.75rem';
+
+          item.innerHTML = `
+            <span><strong>${s.name}</strong> (${s.category})</span>
+            <button class="delete-symbol-btn" data-id="${s.id}" style="background: #e74c3c; color: #fff; border: none; padding: 2px 6px; border-radius: 3px; cursor: pointer; font-size: 0.65rem;">Eliminar</button>
+          `;
+
+          item.querySelector('.delete-symbol-btn').addEventListener('click', async () => {
+            if (confirm(`¿Eliminar símbolo '${s.name}'?`)) {
+              await fetch(`/api/symbols/${s.id}`, { method: 'DELETE' });
+              loadEnrolledSymbols();
+            }
+          });
+
+          enrolledSymbolsList.appendChild(item);
+        });
+      }
+    } catch (e) {
+      console.error('Error cargando símbolos enrolados:', e);
+    }
+  }
+
+  if (btnEnrollSymbolFile && symbolPhotoInput) {
+    btnEnrollSymbolFile.addEventListener('click', () => {
+      if (!symbolName.value.trim()) {
+        alert('Por favor escribe el nombre del símbolo o insignia antes de continuar.');
+        symbolName.focus();
+        return;
+      }
+      symbolPhotoInput.click();
+    });
+
+    symbolPhotoInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const name = symbolName.value.trim();
+      const cat = symbolCategory.value;
+
+      btnEnrollSymbolFile.disabled = true;
+      btnEnrollSymbolFile.textContent = 'Procesando Símbolo...';
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const res = await fetch(`/api/symbols/enroll?name=${encodeURIComponent(name)}&category=${encodeURIComponent(cat)}`, {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          alert(`${data.message}`);
+          symbolName.value = '';
+          symbolPhotoInput.value = '';
+          loadEnrolledSymbols();
+        } else {
+          alert(`No se pudo enrolar el símbolo: ${data.detail || 'Error extrayendo huella visual.'}`);
+        }
+      } catch (err) {
+        alert('Error enrolando símbolo: ' + err.message);
+      } finally {
+        btnEnrollSymbolFile.disabled = false;
+        btnEnrollSymbolFile.textContent = 'Subir Foto de Símbolo (JPG/PNG)';
+      }
+    });
+  }
+
+  loadEnrolledSymbols();
+
+  // Event Logs (Capturas)
+  const eventLogsContainer = document.getElementById('eventLogsContainer');
+  let lastLogsHash = '';
+
+  async function fetchLogs() {
+    if (!eventLogsContainer) return;
+    try {
+      const res = await fetch('/api/logs');
+      if (res.ok) {
+        const logs = await res.json();
+        
+        const currentHash = JSON.stringify(logs.map(l => `${l.track_id}-${l.timestamp}-${l.name}`));
+        if (currentHash !== lastLogsHash) {
+          lastLogsHash = currentHash;
+          eventLogsContainer.innerHTML = '';
+          
+          if (logs.length === 0) {
+            eventLogsContainer.innerHTML = '<span style="font-size: 0.85rem; color: var(--text-muted); padding: 10px;">Esperando eventos de cámara...</span>';
+            return;
+          }
+          
+          logs.forEach(log => {
+            const card = document.createElement('div');
+            
+            // Determinar color por estado
+            let badgeColor = '#3498db'; // Default
+            if (log.status === 'No Registrado') badgeColor = '#e74c3c';
+            else if (log.status === 'VIP' || log.status === 'VIP / Autorizado') badgeColor = '#f1c40f';
+            else if (log.status === 'Empleado') badgeColor = '#2ecc71';
+            
+            card.className = 'compact-log-card';
+            card.onclick = () => window.openModal(log.image, log.name, log.status, log.timestamp, badgeColor);
+
+            card.innerHTML = `
+              <img src="${log.image}" alt="Captura">
+              <div class="compact-log-badge" style="background: ${badgeColor};" title="${log.name} - ${log.status}"></div>
+            `;
+            eventLogsContainer.appendChild(card);
+          });
+        }
+      }
+    } catch (e) {
+      // Silenciar errores de conexión
+    }
+  }
+
+  if (eventLogsContainer) {
+    setInterval(fetchLogs, 2000);
+    fetchLogs();
+  }
+
+  const aboutBtn = document.getElementById('aboutBtn');
+  if (aboutBtn) {
+    aboutBtn.addEventListener('click', () => {
+      document.getElementById('aboutModal').style.display = 'flex';
+    });
+  }
+
+  // Enrolamiento rápido desde la captura del Modal
+  const btnModalEnroll = document.getElementById('btnModalEnroll');
+  if (btnModalEnroll) {
+    btnModalEnroll.addEventListener('click', async () => {
+      const nameInput = document.getElementById('modalEnrollName');
+      const dniInput = document.getElementById('modalEnrollDni');
+      const roleInput = document.getElementById('modalEnrollRole');
+
+      const name = nameInput ? nameInput.value.trim() : '';
+      const dni = dniInput ? dniInput.value.trim() : '';
+      const role = roleInput ? roleInput.value : 'Usuario';
+
+      if (!name || !dni) {
+        alert('Por favor ingresa Nombre y DNI/Legajo para enrolar a esta persona.');
+        return;
+      }
+
+      btnModalEnroll.disabled = true;
+      btnModalEnroll.textContent = 'Enrolando...';
+
+      try {
+        const res = await fetch('/api/faces/enroll_b64', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name,
+            dni: dni,
+            role: role,
+            image_b64: currentModalImageB64
+          })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          alert(`${data.message}`);
+          if (nameInput) nameInput.value = '';
+          if (dniInput) dniInput.value = '';
+          window.closeModal();
+          loadEnrolledFaces();
+          fetchLogs();
+        } else {
+          alert(`No se pudo enrolar desde la captura: ${data.detail || 'Asegúrate de que la captura muestre un rostro nítido.'}`);
+        }
+      } catch (err) {
+        alert('Error en la solicitud de enrolamiento: ' + err.message);
+      } finally {
+        btnModalEnroll.disabled = false;
+        btnModalEnroll.textContent = 'Registrar e Identificar';
+      }
+    });
+  }
+
 });
+
+// Global state for modal capture image
+let currentModalImageB64 = '';
+
+// Modal Logic
+window.openModal = function(imgSrc, name, status, time, badgeColor) {
+  currentModalImageB64 = imgSrc;
+  document.getElementById('modalImage').src = imgSrc;
+  document.getElementById('modalCaption').innerHTML = `
+    <strong style="color:#fff; font-size:1.2rem;">${name}</strong> 
+    <span style="background: ${badgeColor}; padding: 3px 8px; border-radius: 4px; font-size: 0.8rem; margin-left:10px; color:#fff;">${status}</span> 
+    <br><span style="font-size: 0.85rem; color: #ccc;">${time}</span>
+  `;
+
+  const modalEnrollSection = document.getElementById('modalEnrollSection');
+  if (modalEnrollSection) {
+    modalEnrollSection.style.display = 'block';
+  }
+
+  document.getElementById('imageModal').style.display = 'flex';
+};
+
+window.closeModal = function() {
+  document.getElementById('imageModal').style.display = 'none';
+};
+
+window.closeAboutModal = function() {
+  document.getElementById('aboutModal').style.display = 'none';
+};
+
+window.onclick = function(event) {
+  const modal = document.getElementById('imageModal');
+  const aboutModal = document.getElementById('aboutModal');
+  if (event.target === modal) {
+    window.closeModal();
+  }
+  if (event.target === aboutModal) {
+    window.closeAboutModal();
+  }
+};

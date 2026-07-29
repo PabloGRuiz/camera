@@ -144,7 +144,14 @@ class FaceDatabase:
         if best_match and (highest_similarity >= threshold):
             return best_match
 
-        return None
+        # Si se procesó un vector válido pero no superó el umbral, retornar "Desconocido"
+        return {
+            "id": -1,
+            "name": "Desconocido",
+            "dni": "N/A",
+            "role": "No Registrado",
+            "similarity": round(max(0.0, highest_similarity) * 100.0, 1)
+        }
 
 # Instancia Singleton de la Base de Datos Biométrica
 face_db = FaceDatabase()

@@ -1,15 +1,15 @@
 # Object-Centered Tracking & Auto-Framing System
 
-Un sistema de alto rendimiento de visión por computadora para **seguimiento de objetos centrado en el sujeto** y **encuadre automático dinámico (Auto-Framing)** con aceleración de inferencia **Intel OpenVINO** y filtrado de suavizado por **Media Móvil Exponencial (EMA)**.
+Un sistema de alto rendimiento de visión por computadora para **seguimiento de objetos centrado en el sujeto** y **encuadre automático dinámico (Auto-Framing)** con aceleración de inferencia **Intel OpenVINO**, extrapoblación de velocidad lineal $O(1)$ y filtrado **Cinematic Damping (Spring Model)**.
 
 ---
 
 ## 🛠️ Stack Tecnológico
 
-- **Backend**: Python 3.10+, FastAPI (Streaming MJPEG asíncrono y REST API).
-- **Motor de Visión**: YOLOv8 (Ultralytics) + ByteTrack para seguimiento persistente por ID.
+- **Backend**: Python 3.10+, FastAPI (Streaming MJPEG asíncrono y REST API limitando a 10 FPS de forma eficiente).
+- **Motor de Visión**: YOLOv8 (Ultralytics) + ByteTrack para seguimiento persistente por ID + Extrapolación de Velocidad Lineal para frame skipping sin latencia.
 - **Aceleración Inferencia**: Intel OpenVINO Toolkit (Optimizado para procesadores Intel i7 e iGPU UHD 630 / CPU vectorizado).
-- **Procesamiento de Imagen**: OpenCV (`opencv-python-headless`).
+- **Procesamiento de Imagen**: OpenCV (`opencv-python-headless`) con caché asíncrono para biometría facial.
 - **Panel de Control**: Interfaz Web HTML5/JS responsiva en modo oscuro + Dashboard en Streamlit.
 - **Contenerización**: Docker & Docker Compose.
 

@@ -91,8 +91,13 @@ class VideoStreamReader:
             try:
                 # Si es un número (ej. "0"), convertir a int para la cámara web
                 src_val = int(source_str) if source_str.isdigit() else source_str
-                logger.info(f"Intentando abrir fuente OpenCV: {src_val}")
-                self.cap = cv2.VideoCapture(src_val)
+                if isinstance(src_val, int):
+                    self.cap = cv2.VideoCapture(src_val, cv2.CAP_DSHOW)
+                    if not self.cap.isOpened():
+                        self.cap = cv2.VideoCapture(src_val)
+                else:
+                    self.cap = cv2.VideoCapture(src_val)
+
                 if not self.cap.isOpened():
                     logger.warning(f"No se pudo abrir la fuente: {src_val}. Recurriendo a modo SYNTHETIC.")
                     self.is_synthetic = True

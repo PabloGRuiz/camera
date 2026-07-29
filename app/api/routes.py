@@ -3,6 +3,9 @@ import time
 import logging
 import numpy as np
 from typing import Optional, List
+import base64
+from datetime import datetime
+from collections import deque
 from fastapi import APIRouter, Query, HTTPException, File, UploadFile, Response
 from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field
@@ -13,8 +16,19 @@ from app.core.detector import OpenVINODetector
 from app.core.auto_framing import AutoFramingEngine
 from app.core.face_db import face_db
 from app.core.face_recognizer import face_recognizer
+from app.core.symbol_db import symbol_db
+from app.core.symbol_recognizer import symbol_recognizer
 
 logger = logging.getLogger("APIRoutes")
+
+# Cache para evitar bloqueos repetitivos por reconocimiento facial y de símbolos
+face_recognition_cache = {}
+symbol_recognition_cache = {}
+
+# Registro de Eventos (Capturas)
+event_logs = deque(maxlen=10)
+logged_track_ids = set()
+last_logged_times = {}
 
 router = APIRouter()
 
@@ -36,7 +50,8 @@ pipeline_stats = {
 CATEGORY_MAP = {
     "ALL": None,                       # Todas las 80 clases COCO
     "PERSON": [0],                     # Solo personas (cuerpo humano)
-    "OBJECTS": list(range(1, 80))      # Todos los objetos inanimados (excluyendo personas)
+    "OBJECTS": list(range(1, 80)),     # Todos los objetos inanimados (excluyendo personas)
+    "SYMBOLS": None                    # Modo dedicado a Insignias, Rangos y Logos
 }
 
 class SettingsUpdateModel(BaseModel):
@@ -72,7 +87,10 @@ async def update_settings(payload: SettingsUpdateModel):
     if payload.draw_overlays is not None:
         settings.DRAW_OVERLAYS = payload.draw_overlays
     if payload.target_category is not None:
-        settings.TARGET_CLASSES = CATEGORY_MAP.get(payload.target_category.upper(), None)
+        cat_upper = payload.target_category.upper()
+        settings.TARGET_CLASSES = CATEGORY_MAP.get(cat_upper, None)
+        settings.ENABLE_SYMBOL_RECOGNITION = (cat_upper == "SYMBOLS")
+        symbol_recognition_cache.clear()
     if payload.detection_paused is not None:
         settings.DETECTION_PAUSED = payload.detection_paused
 
@@ -107,6 +125,52 @@ async def get_status():
         "telemetry": pipeline_stats["last_telemetry"]
     }
 
+@router.get("/api/logs")
+async def get_logs():
+    """Devuelve los últimos 10 eventos/capturas registrados en Base64."""
+    return list(event_logs)
+
+def _log_person_capture(t_id: int, frame: np.ndarray, bbox: List[float], match_info: dict):
+    now = time.time()
+    name = match_info.get("name", "Desconocido")
+    
+    # Cooldown inteligente para evitar spamear capturas de la misma persona
+    cooldown = 30.0 if name != "Desconocido" else 15.0
+    if (now - last_logged_times.get(name, 0.0)) < cooldown:
+        return
+
+    if t_id not in logged_track_ids:
+        logged_track_ids.add(t_id)
+        last_logged_times[name] = now
+        try:
+            # Crear copia del fotograma a tamaño completo para el registro
+            full_snapshot = frame.copy()
+            x1, y1, x2, y2 = [int(c) for c in bbox]
+            
+            status_role = match_info.get("role", "No Registrado")
+            color = (0, 255, 120) if status_role != "No Registrado" else (0, 0, 255)
+            cv2.rectangle(full_snapshot, (x1, y1), (x2, y2), color, 2)
+            label = f"{name} ({status_role})"
+            cv2.putText(full_snapshot, label, (x1, max(25, y1 - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2, cv2.LINE_AA)
+
+            # Redimensionar el fotograma completo a resolución óptima (640x360)
+            h, w = full_snapshot.shape[:2]
+            target_w = 640
+            target_h = int(target_w * (h / float(w)))
+            full_resized = cv2.resize(full_snapshot, (target_w, target_h), interpolation=cv2.INTER_AREA)
+
+            _, buffer = cv2.imencode(".jpg", full_resized, [int(cv2.IMWRITE_JPEG_QUALITY), 82])
+            b64_img = base64.b64encode(buffer).decode("utf-8")
+            event_logs.appendleft({
+                "timestamp": datetime.now().strftime("%H:%M:%S"),
+                "track_id": t_id,
+                "name": name,
+                "status": status_role,
+                "image": f"data:image/jpeg;base64,{b64_img}"
+            })
+        except Exception as e:
+            logger.error(f"Error generando captura a tamaño completo para log: {e}")
+
 def generate_mjpeg_stream(mode: str = "framed"):
     """
     Generador asíncrono de fotogramas MJPEG para streaming HTTP.
@@ -136,9 +200,29 @@ def generate_mjpeg_stream(mode: str = "framed"):
                 # 1.5 Reconocimiento Facial Biométrico en Sujetos (Personas)
                 for obj in tracked_objects:
                     if obj.get("class_id") == 0 or obj.get("class_name") == "person":
-                        match_info = face_recognizer.recognize_face_in_bbox(frame, obj["bbox"])
-                        if match_info:
-                            obj["face_identity"] = match_info
+                        t_id = obj.get("track_id")
+                        if t_id is not None:
+                            # Intentar reconocer la cara mientras no esté identificada
+                            if face_recognition_cache.get(t_id) is None:
+                                match_info = face_recognizer.recognize_face_in_bbox(frame, obj["bbox"])
+                                if match_info:
+                                    face_recognition_cache[t_id] = match_info
+                            
+                            if face_recognition_cache.get(t_id):
+                                match_info = face_recognition_cache[t_id]
+                                obj["face_identity"] = match_info
+                                _log_person_capture(t_id, frame, obj["bbox"], match_info)
+                    
+                    # Reconocimiento de Símbolos, Insignias y Logos (Solo si la categoría es SYMBOLS)
+                    if settings.ENABLE_SYMBOL_RECOGNITION:
+                        t_id = obj.get("track_id")
+                        if t_id is not None:
+                            if symbol_recognition_cache.get(t_id) is None:
+                                sym_match = symbol_recognizer.recognize_symbol_in_bbox(frame, obj["bbox"])
+                                if sym_match:
+                                    symbol_recognition_cache[t_id] = sym_match
+                            if symbol_recognition_cache.get(t_id):
+                                obj["symbol_identity"] = symbol_recognition_cache[t_id]
 
             # 2. Motor de Auto-Framing y Suavizado EMA
             auto_framed_output, annotated_frame, telemetry = framing_engine.process_frame(
@@ -237,9 +321,28 @@ async def process_frame(
 
     for obj in tracked_objects:
         if obj.get("class_id") == 0 or obj.get("class_name") == "person":
-            match_info = face_recognizer.recognize_face_in_bbox(frame, obj["bbox"])
-            if match_info:
-                obj["face_identity"] = match_info
+            t_id = obj.get("track_id")
+            if t_id is not None:
+                if face_recognition_cache.get(t_id) is None:
+                    match_info = face_recognizer.recognize_face_in_bbox(frame, obj["bbox"])
+                    if match_info:
+                        face_recognition_cache[t_id] = match_info
+                
+                if face_recognition_cache.get(t_id):
+                    match_info = face_recognition_cache[t_id]
+                    obj["face_identity"] = match_info
+                    _log_person_capture(t_id, frame, obj["bbox"], match_info)
+
+        # Reconocimiento de Símbolos en process_frame (Solo si la categoría es SYMBOLS)
+        if settings.ENABLE_SYMBOL_RECOGNITION:
+            t_id = obj.get("track_id")
+            if t_id is not None:
+                if symbol_recognition_cache.get(t_id) is None:
+                    sym_match = symbol_recognizer.recognize_symbol_in_bbox(frame, obj["bbox"])
+                    if sym_match:
+                        symbol_recognition_cache[t_id] = sym_match
+                if symbol_recognition_cache.get(t_id):
+                    obj["symbol_identity"] = symbol_recognition_cache[t_id]
 
     auto_framed_output, annotated_frame, telemetry = framing_engine.process_frame(
         frame, tracked_objects, draw_overlay=settings.DRAW_OVERLAYS
@@ -292,6 +395,57 @@ async def video_feed(mode: str = Query("framed", description="Modo de transmisi�
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
 
+class EnrollB64Model(BaseModel):
+    name: str
+    dni: str
+    role: Optional[str] = "Usuario"
+    image_b64: str
+
+@router.post("/api/faces/enroll_b64")
+async def enroll_face_b64(payload: EnrollB64Model):
+    """
+    Registra a una persona desde una captura en Base64 extrayendo su vector facial de 128-D.
+    """
+    try:
+        b64_data = payload.image_b64
+        if "," in b64_data:
+            b64_data = b64_data.split(",")[1]
+        
+        img_bytes = base64.b64decode(b64_data)
+        nparr = np.frombuffer(img_bytes, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        if frame is None:
+            raise HTTPException(status_code=400, detail="Imagen Base64 no válida")
+
+        embedding = face_recognizer.extract_embedding(frame)
+        if embedding is None:
+            raise HTTPException(status_code=422, detail="No se detectó un rostro nítido en la captura para extraer la huella biométrica.")
+
+        success = face_db.register_person(name=payload.name, dni=payload.dni, role=payload.role, embedding=embedding)
+        if not success:
+            raise HTTPException(status_code=500, detail="Error guardando en la base de datos (DNI posiblemente duplicado).")
+
+        # Limpiar la caché para que el rastreador identifique a la persona inmediatamente
+        face_recognition_cache.clear()
+
+        # Actualizar logs en memoria con la nueva identidad
+        for log_entry in event_logs:
+            if log_entry.get("status") == "No Registrado" or log_entry.get("name") == "Desconocido":
+                log_entry["name"] = payload.name
+                log_entry["status"] = payload.role
+
+        return {
+            "status": "success",
+            "message": f"Persona '{payload.name}' (DNI: {payload.dni}) enrolada exitosamente desde la captura.",
+            "person": {"name": payload.name, "dni": payload.dni, "role": payload.role}
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error enrolando desde Base64: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/api/faces/enroll")
 async def enroll_face(
     name: str = Query(..., description="Nombre completo de la persona"),
@@ -317,6 +471,10 @@ async def enroll_face(
     if not success:
         raise HTTPException(status_code=500, detail="Error guardando persona en la base de datos (DNI duplicado o error de BD)")
 
+    # Limpiar caché de reconocimiento facial y de cooldowns para identificación inmediata sin recargar
+    face_recognition_cache.clear()
+    last_logged_times.clear()
+
     return {
         "status": "success",
         "message": f"Persona '{name}' (DNI: {dni}) enrolada exitosamente.",
@@ -338,4 +496,55 @@ async def delete_face(person_id: int):
     success = face_db.delete_person(person_id)
     if not success:
         raise HTTPException(status_code=404, detail="Persona no encontrada o error al eliminar")
+    face_recognition_cache.clear()
+    last_logged_times.clear()
     return {"status": "success", "message": f"Persona ID {person_id} eliminada."}
+
+@router.post("/api/symbols/enroll")
+async def enroll_symbol(
+    name: str = Query(..., description="Nombre del símbolo, insignia o rango (ej. 'Capitán', 'Logo Ford')"),
+    category: Optional[str] = Query("Insignia", description="Categoría (ej. Rango Militar, Marca, Escudo)"),
+    description: Optional[str] = Query("", description="Descripción opcional"),
+    file: UploadFile = File(...)
+):
+    """
+    Registra un nuevo símbolo o insignia en la Base de Datos extrayendo su huella digital visual.
+    """
+    contents = await file.read()
+    nparr = np.frombuffer(contents, np.uint8)
+    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+    if frame is None:
+        raise HTTPException(status_code=400, detail="Imagen de símbolo no válida")
+
+    embedding = symbol_recognizer.extract_embedding(frame)
+    if embedding is None:
+        raise HTTPException(status_code=422, detail="No se pudo extraer la huella visual de la imagen enviada.")
+
+    success = symbol_db.register_symbol(name=name, category=category, description=description, embedding=embedding)
+    if not success:
+        raise HTTPException(status_code=500, detail="Error guardando el símbolo en la base de datos.")
+
+    return {
+        "status": "success",
+        "message": f"Símbolo '{name}' ({category}) registrado exitosamente.",
+        "symbol": {"name": name, "category": category, "description": description}
+    }
+
+@router.get("/api/symbols/list")
+async def list_symbols():
+    """
+    Retorna la lista de todos los símbolos e insignias enrolados en la Base de Datos.
+    """
+    return {"symbols": symbol_db.get_all_symbols()}
+
+@router.delete("/api/symbols/{symbol_id}")
+async def delete_symbol(symbol_id: int):
+    """
+    Elimina un símbolo enrolado de la Base de Datos por su ID.
+    """
+    success = symbol_db.delete_symbol(symbol_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Símbolo no encontrado o error al eliminar")
+    return {"status": "success", "message": f"Símbolo ID {symbol_id} eliminado."}
+

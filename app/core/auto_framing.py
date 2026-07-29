@@ -29,6 +29,12 @@ class AutoFramingEngine:
         self.smooth_cy: Optional[float] = None
         self.smooth_w: Optional[float] = None
         self.smooth_h: Optional[float] = None
+        
+        # Velocidades para el modelo de resorte (Damped Spring)
+        self.vel_cx: float = 0.0
+        self.vel_cy: float = 0.0
+        self.vel_w: float = 0.0
+        self.vel_h: float = 0.0
 
         self.last_active_target_id: Optional[int] = None
         self.lost_frames_count: int = 0
@@ -57,6 +63,10 @@ class AutoFramingEngine:
         self.smooth_cy = None
         self.smooth_w = None
         self.smooth_h = None
+        self.vel_cx = 0.0
+        self.vel_cy = 0.0
+        self.vel_w = 0.0
+        self.vel_h = 0.0
 
     def _parse_aspect_ratio(self, ratio_str: str) -> Optional[float]:
         if ratio_str == "16:9":
@@ -128,33 +138,66 @@ class AutoFramingEngine:
             raw_w = x2 - x1
             raw_h = y2 - y1
 
-            # Inicialización o actualización por Media Móvil Exponencial (EMA)
+            # Inicialización o actualización por Modelo de Resorte (Damped Spring)
             if self.smooth_cx is None:
                 self.smooth_cx = raw_cx
                 self.smooth_cy = raw_cy
                 self.smooth_w = raw_w
                 self.smooth_h = raw_h
+                self.vel_cx = 0.0
+                self.vel_cy = 0.0
+                self.vel_w = 0.0
+                self.vel_h = 0.0
             else:
-                alpha = self.ema_alpha
-                self.smooth_cx = alpha * raw_cx + (1.0 - alpha) * self.smooth_cx
-                self.smooth_cy = alpha * raw_cy + (1.0 - alpha) * self.smooth_cy
-                self.smooth_w = alpha * raw_w + (1.0 - alpha) * self.smooth_w
-                self.smooth_h = alpha * raw_h + (1.0 - alpha) * self.smooth_h
+                # ema_alpha controla la rigidez del resorte
+                stiffness = self.ema_alpha * 0.4
+                damping = 0.85 # Fricción (0-1) para evitar oscilaciones excesivas
+                
+                # Aceleración = Distancia * Rigidez
+                acc_cx = (raw_cx - self.smooth_cx) * stiffness
+                acc_cy = (raw_cy - self.smooth_cy) * stiffness
+                acc_w = (raw_w - self.smooth_w) * stiffness
+                acc_h = (raw_h - self.smooth_h) * stiffness
+                
+                # Integración Euler
+                self.vel_cx = (self.vel_cx + acc_cx) * damping
+                self.vel_cy = (self.vel_cy + acc_cy) * damping
+                self.vel_w = (self.vel_w + acc_w) * damping
+                self.vel_h = (self.vel_h + acc_h) * damping
+                
+                self.smooth_cx += self.vel_cx
+                self.smooth_cy += self.vel_cy
+                self.smooth_w += self.vel_w
+                self.smooth_h += self.vel_h
         else:
-            self.lost_frames_count += 1
-            if self.lost_frames_count > self.max_lost_frames:
+            if self.smooth_cx is None:
+                self.smooth_cx = frame_w / 2.0
+                self.smooth_cy = frame_h / 2.0
+                self.smooth_w = frame_w * 0.5
+                self.smooth_h = frame_h * 0.5
+                self.vel_cx = 0.0
+                self.vel_cy = 0.0
+                self.vel_w = 0.0
+                self.vel_h = 0.0
+            elif self.lost_frames_count > self.max_lost_frames:
                 # Si se perdió el objetivo por más de max_lost_frames, volver suavemente al centro del video
-                if self.smooth_cx is not None:
-                    alpha = 0.05
-                    self.smooth_cx = alpha * (frame_w / 2.0) + (1.0 - alpha) * self.smooth_cx
-                    self.smooth_cy = alpha * (frame_h / 2.0) + (1.0 - alpha) * self.smooth_cy
-                    self.smooth_w = alpha * (frame_w * 0.5) + (1.0 - alpha) * self.smooth_w
-                    self.smooth_h = alpha * (frame_h * 0.5) + (1.0 - alpha) * self.smooth_h
-                else:
-                    self.smooth_cx = frame_w / 2.0
-                    self.smooth_cy = frame_h / 2.0
-                    self.smooth_w = frame_w * 0.5
-                    self.smooth_h = frame_h * 0.5
+                target_cx = frame_w / 2.0
+                target_cy = frame_h / 2.0
+                target_w = frame_w * 0.5
+                target_h = frame_h * 0.5
+                
+                stiffness = 0.02
+                damping = 0.85
+                
+                self.vel_cx = (self.vel_cx + (target_cx - self.smooth_cx) * stiffness) * damping
+                self.vel_cy = (self.vel_cy + (target_cy - self.smooth_cy) * stiffness) * damping
+                self.vel_w = (self.vel_w + (target_w - self.smooth_w) * stiffness) * damping
+                self.vel_h = (self.vel_h + (target_h - self.smooth_h) * stiffness) * damping
+                
+                self.smooth_cx += self.vel_cx
+                self.smooth_cy += self.vel_cy
+                self.smooth_w += self.vel_w
+                self.smooth_h += self.vel_h
 
         # 3. Aplicar Padding a las dimensiones del sujeto
         padded_w = self.smooth_w * (1.0 + self.padding)
@@ -256,10 +299,14 @@ class AutoFramingEngine:
             color = (0, 255, 0) if is_target else (180, 180, 180)
             thickness = 3 if is_target else 1
 
-            # Si hay reconocimiento facial, cambiar color a Verde Neón o Azul y mostrar etiqueta biométrica
+            # Si hay reconocimiento facial o de símbolos, cambiar color y etiqueta
+            sym_id = obj.get("symbol_identity")
             if face_id:
-                color = (0, 255, 120)  # Verde esmeralda para coincidencia
+                color = (0, 255, 120)  # Verde esmeralda para coincidencia facial
                 label = f"ID:{track_id} {face_id['name']} ({face_id['similarity']}%)"
+            elif sym_id:
+                color = (255, 200, 0)  # Cian/Dorado para coincidencia de símbolo
+                label = f"ID:{track_id} [{sym_id['category']}: {sym_id['name']} ({sym_id['similarity']}%)]"
             else:
                 label = f"ID:{track_id} {cls_name}" if track_id else f"{cls_name}"
 
