@@ -48,9 +48,9 @@ pipeline_stats = {
 }
 
 CATEGORY_MAP = {
-    "ALL": None,                       # Todas las 80 clases COCO
-    "PERSON": [0],                     # Solo personas (cuerpo humano)
-    "OBJECTS": list(range(1, 80)),     # Todos los objetos inanimados (excluyendo personas)
+    "ALL": None,                       # Todas las clases del modelo activo
+    "PERSON": [0, 5, 6],               # Personas (COCO ID 0, Militar IDs 0, 5, 6)
+    "OBJECTS": list(range(1, 80)),     # Todos los objetos inanimados
     "SYMBOLS": None                    # Modo dedicado a Insignias, Rangos y Logos
 }
 
@@ -213,9 +213,11 @@ def generate_mjpeg_stream(mode: str = "framed"):
                 tracked_objects = detector.detect_and_track(frame, conf=settings.CONFIDENCE_THRESHOLD)
                 infer_latency = (time.time() - start_infer) * 1000.0
 
-                # 1.5 Reconocimiento Facial Biométrico en Sujetos (Personas)
+                # 1.5 Reconocimiento Facial Biométrico en Sujetos (Personas / Soldados / Civiles)
                 for obj in tracked_objects:
-                    if obj.get("class_id") == 0 or obj.get("class_name") == "person":
+                    c_id = obj.get("class_id")
+                    c_name = str(obj.get("class_name", "")).lower()
+                    if c_id in [0, 5, 6] or any(p in c_name for p in ["person", "soldier", "soldado", "civil"]):
                         t_id = obj.get("track_id")
                         if t_id is not None:
                             # Intentar reconocer la cara mientras no esté identificada
@@ -335,8 +337,11 @@ async def process_frame(
     tracked_objects = detector.detect_and_track(frame, conf=settings.CONFIDENCE_THRESHOLD, classes=target_classes)
     infer_latency = (time.time() - start_infer) * 1000.0
 
+    # 1.5 Reconocimiento Facial Biométrico en Sujetos (Personas / Soldados / Civiles)
     for obj in tracked_objects:
-        if obj.get("class_id") == 0 or obj.get("class_name") == "person":
+        c_id = obj.get("class_id")
+        c_name = str(obj.get("class_name", "")).lower()
+        if c_id in [0, 5, 6] or any(p in c_name for p in ["person", "soldier", "soldado", "civil"]):
             t_id = obj.get("track_id")
             if t_id is not None:
                 if face_recognition_cache.get(t_id) is None:
