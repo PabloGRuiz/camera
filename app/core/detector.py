@@ -25,7 +25,26 @@ class OpenVINODetector:
         self.use_int8 = getattr(settings, "USE_INT8_QUANTIZATION", False)
 
     def _load_model(self):
-        base_model_dir = Path(settings.MODEL_PATH).parent
+        target_path = Path(settings.MODEL_PATH)
+        
+        # Si MODEL_PATH apunta directamente a un directorio existente de OpenVINO
+        if target_path.exists() and target_path.is_dir() and any(target_path.iterdir()):
+            model_dir = target_path
+            try:
+                from ultralytics import YOLO
+                logger.info(f"Cargando modelo OpenVINO personalizado desde: {model_dir.resolve()} en dispositivo: {self.device}")
+                self.model = YOLO(str(model_dir), task="detect")
+
+                logger.info("Ejecutando warmup en CPU...")
+                dummy_frame = np.zeros((640, 640, 3), dtype=np.uint8)
+                self.model.predict(source=dummy_frame, device=self.device.lower(), verbose=False)
+                logger.info("Modelo OpenVINO cargado y listo para inferencia en tiempo real.")
+                self.is_synthetic_mode = False
+                return
+            except Exception as e:
+                logger.warning(f"Error cargando modelo directo desde {model_dir}: {e}")
+
+        base_model_dir = target_path.parent if target_path.parent.name else Path("models")
         
         # Intentar cargar INT8 si está configurado, o FP32 como fallback
         modes_to_try = [self.use_int8, False] if self.use_int8 else [False]
