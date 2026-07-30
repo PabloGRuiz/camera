@@ -3,22 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Object-Centered Tracking & Auto-Framing | Intel OpenVINO</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=1.0.13">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <title>Sistema de Visión y Seguimiento de Objetos | Intel OpenVINO</title>
+  <link rel="stylesheet" href="/static/css/style.css?v=2.0.0">
 </head>
 <body>
 
   <!-- Navbar -->
   <header class="navbar">
     <div class="brand">
-      <div class="brand-icon">CV</div>
-      <div class="brand-title">Auto-Framing AI Core</div>
+      <div class="brand-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+      </div>
+      <div class="brand-title">Sistema de Seguimiento y Detección de Objetivos</div>
     </div>
     <div style="display: flex; align-items: center; gap: 15px;">
-      <button id="aboutBtn" class="webcam-btn" style="background: rgba(255,255,255,0.08); border: 1px solid var(--bg-card-border);">Acerca de</button>
+      <button id="aboutBtn" class="webcam-btn ghost">Acerca de</button>
       <div class="status-badge">
         <div class="status-dot"></div>
         <span>OpenVINO Acelerado</span>
@@ -33,17 +32,14 @@
     <section class="video-card">
       <div class="video-header">
         <h2 class="section-title">Transmisión en Vivo</h2>
-        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-          <button id="webcamToggleBtn" class="webcam-btn">Activar Webcam Navegador</button>
-          <button id="screenShareToggleBtn" class="webcam-btn" style="background: #e67e22;">Transmitir Pantalla / Pestaña</button>
-          <button id="scanToggleBtn" class="webcam-btn" style="background: #2ecc71;">Escáner IA: Activo</button>
-          <button id="pipToggleBtn" class="webcam-btn" style="background: #9b59b6;">Flotante (PiP)</button>
-          <button id="openDetectorPopoutBtn" class="webcam-btn" style="background: #3498db;">Popout Detector</button>
-          <button id="openFramedPopoutBtn" class="webcam-btn" style="background: #1abc9c;">Popout Encuadre</button>
+        <div class="header-actions">
+          <button id="webcamToggleBtn" class="webcam-btn">Activar Cámara</button>
+          <button id="screenShareToggleBtn" class="webcam-btn" style="background: #e67e22;">Transmitir Pantalla</button>
+          <button id="fullscreenBtn" class="webcam-btn ghost">⛶ Fullscreen</button>
           <div class="mode-selector">
-            <button class="mode-btn active" data-mode="framed">Encuadre Suavizado</button>
-            <button class="mode-btn" data-mode="annotated">Detector Overlay</button>
-            <button class="mode-btn" data-mode="dual">Vista Dividida (Dual)</button>
+            <button class="mode-btn active" data-mode="framed">Modo Encuadre</button>
+            <button class="mode-btn" data-mode="annotated">Vista Completa (Overlay)</button>
+            <button class="mode-btn" data-mode="dual">Vista Dual</button>
           </div>
         </div>
       </div>
@@ -53,281 +49,156 @@
         <canvas id="outputCanvas" class="video-stream-img" style="display:none;"></canvas>
         <video id="webcamVideo" autoplay playsinline muted style="position: absolute; opacity: 0.001; pointer-events: none; top: 0; left: 0; width: 100%; height: 100%; z-index: -1;"></video>
         <canvas id="webcamCanvas" style="display:none;"></canvas>
-        <video id="pipVideo" autoplay playsinline muted style="display:none;"></video>
-        <canvas id="pipCanvas" style="display:none;"></canvas>
       </div>
 
-      <!-- Registro de Capturas (Event Logs) Compacto -->
-      <div class="logs-compact-container">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <h3 class="section-title" style="font-size: 0.95rem; margin-top: 10px;">Capturas Recientes</h3>
-          <button id="btnClearLogsBtn" style="background: rgba(231, 76, 60, 0.15); border: 1px solid #e74c3c; color: #e74c3c; font-size: 0.75rem; padding: 3px 8px; border-radius: 4px; cursor: pointer;">Vaciar Historial</button>
-        </div>
-        <div id="eventLogsContainer" class="logs-horizontal-scroll" style="display: grid !important; grid-template-columns: repeat(5, 1fr) !important; gap: 10px !important; margin-top: 10px;">
-          <!-- Tarjetas generadas dinámicamente -->
-          <span style="font-size: 0.85rem; color: var(--text-muted); padding: 10px;">Esperando eventos de cámara...</span>
-        </div>
+      <!-- Telemetría rápida inferior -->
+      <div class="telemetry-bar">
+        <div class="stat-item"><span class="stat-label">Rendimiento:</span> <span id="fpsStat" class="stat-val">0 FPS</span></div>
+        <div class="stat-item"><span class="stat-label">Latencia Inferencia:</span> <span id="latencyStat" class="stat-val">0 ms</span></div>
+        <div class="stat-item"><span class="stat-label">Dispositivo IA:</span> <span id="deviceStat" class="stat-val">CPU</span></div>
+        <div class="stat-item"><span class="stat-label">Objetivo Activo:</span> <span id="targetIdStat" class="stat-val">Auto</span></div>
       </div>
-
     </section>
 
-    <!-- Columna Derecha: Panel de Control & Telemetría -->
+    <!-- Columna Derecha: Panel de Control & Filtros -->
     <aside class="controls-card">
-      <div>
-        <h2 class="section-title">Controles en Tiempo Real</h2>
-        
-        <!-- Factor EMA Alpha -->
-        <div class="control-group" style="margin-top: 1rem;">
-          <div class="control-label">
-            <span>Suavizado EMA (&alpha;)</span>
-            <span id="emaValue" class="val-badge">0.15</span>
-          </div>
-          <input type="range" id="emaSlider" min="0.01" max="1.0" step="0.01" value="0.15">
-          <span style="font-size: 0.75rem; color: var(--text-muted);">Menor = cámara más suave/estable | Mayor = respuesta más rápida</span>
+      <h2 class="section-title">Motor de Inteligencia Artificial</h2>
+      
+      <!-- Selección de Modelo -->
+      <div class="control-group">
+        <div class="control-label">
+          <span>Modelo de Visión Activo</span>
         </div>
-
-        <!-- Padding Slider -->
-        <div class="control-group" style="margin-top: 1.2rem;">
-          <div class="control-label">
-            <span>Margen / Padding (%)</span>
-            <span id="paddingValue" class="val-badge">20%</span>
-          </div>
-          <input type="range" id="paddingSlider" min="0" max="60" step="5" value="20">
-        </div>
-
-        <!-- Selección de ID Objetivo -->
-        <div class="control-group" style="margin-top: 1.2rem;">
-          <div class="control-label">
-            <span>ID de Objeto Objetivo</span>
-          </div>
-          <input type="number" id="targetIdInput" placeholder="Automático (-1 u Omitir)" value="-1">
-        </div>
-
-        <!-- Selección de Modelo de Visión IA -->
-        <div class="control-group" style="margin-top: 1.2rem;">
-          <div class="control-label">
-            <span>Modelo de Visión IA</span>
-          </div>
-          <select id="activeModelSelect">
-            <option value="STANDARD" selected>Estándar COCO (Personas y Objetos)</option>
-            <option value="MILITARY">Arsenal Militar y Tropas (12 Clases)</option>
+        <div class="select-wrapper">
+          <select id="activeModelSelect" class="premium-select">
+            <option value="">Cargando modelos...</option>
           </select>
-        </div>
-
-        <!-- Filtro de Categoría de Objeto -->
-        <div class="control-group" style="margin-top: 1.2rem;">
-          <div class="control-label">
-            <span>Objetos a Detectar</span>
-          </div>
-          <select id="targetCategorySelect">
-            <option value="PERSON" selected>Personas (Seguimiento Humano)</option>
-            <option value="OBJECTS">Objetos (Celulares, Laptops, etc.)</option>
-            <option value="SYMBOLS">Insignias y Símbolos (Rangos y Logos)</option>
-            <option value="ALL">Todos (Personas y Objetos)</option>
-          </select>
-        </div>
-
-        <!-- Relación de Aspecto -->
-        <div class="control-group" style="margin-top: 1.2rem;">
-          <div class="control-label">
-            <span>Relación de Aspecto (Aspect Ratio)</span>
-          </div>
-          <select id="aspectRatioSelect">
-            <option value="16:9" selected>16:9 (Panorámico)</option>
-            <option value="9:16">9:16 (Vertical / Mobile)</option>
-            <option value="1:1">1:1 (Cuadrado)</option>
-            <option value="FREE">Libre (Adaptativo)</option>
-          </select>
-        </div>
-
-        <!-- Conmutador Overlays -->
-        <div class="control-group" style="margin-top: 1.2rem; display: flex; flex-direction: row; align-items: center; gap: 10px;">
-          <input type="checkbox" id="overlayCheckbox" checked style="width: auto;">
-          <label for="overlayCheckbox" style="font-size: 0.85rem; color: var(--text-muted); cursor: pointer;">Mostrar marcas y retícula en vista previa</label>
         </div>
       </div>
 
-      <!-- Sección Enrolamiento Facial -->
-      <div style="border-top: 1px solid var(--bg-card-border); padding-top: 1.2rem; margin-top: 1.2rem;">
-        <h2 class="section-title">Enrolamiento Facial Biométrico</h2>
-        <div class="control-group" style="margin-top: 0.8rem;">
-          <input type="text" id="enrollName" placeholder="Nombre completo (ej. Juan Pérez)" style="margin-bottom: 0.5rem;">
-          <input type="text" id="enrollDni" placeholder="DNI / Legajo (ej. 12345678)" style="margin-bottom: 0.5rem;">
-          <select id="enrollRole" style="margin-bottom: 0.5rem;">
-            <option value="Empleado">Empleado</option>
-            <option value="VIP">VIP / Autorizado</option>
-            <option value="Visita">Visita</option>
-          </select>
-          <button id="btnEnrollFace" class="webcam-btn" style="background: #27ae60; width: 100%;">Enrolar Rostro desde Cámara</button>
-          <input type="file" id="enrollPhotoInput" accept="image/*" style="display: none;">
-          <button id="btnEnrollFile" class="webcam-btn" style="background: #2980b9; width: 100%; margin-top: 0.4rem;">Subir Foto de Archivo (JPG/PNG)</button>
-        </div>
+      <div class="divider"></div>
 
-        <div style="margin-top: 1rem;">
-          <h3 style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">Personas Registradas</h3>
-          <div id="enrolledFacesList" style="max-height: 140px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;">
-            <span style="font-size: 0.75rem; color: var(--text-muted);">Sin personas registradas aún</span>
-          </div>
-        </div>
-      <!-- Sección Enrolamiento de Símbolos e Insignias -->
-      <div style="border-top: 1px solid var(--bg-card-border); padding-top: 1.2rem; margin-top: 1.2rem;">
-        <h2 class="section-title">Enrolamiento de Símbolos e Insignias</h2>
-        <div class="control-group" style="margin-top: 0.8rem;">
-          <input type="text" id="symbolName" placeholder="Nombre (ej. Capitán, Logo Ford, Escudo)" style="margin-bottom: 0.5rem;">
-          <select id="symbolCategory" style="margin-bottom: 0.5rem;">
-            <option value="Rango Militar">Rango Militar / Insignia</option>
-            <option value="Marca / Vehículo">Marca / Logo Vehículo</option>
-            <option value="Escudo / Parche">Escudo / Parche Oficial</option>
-            <option value="Símbolo Personalizado">Símbolo Personalizado</option>
-          </select>
-          <input type="file" id="symbolPhotoInput" accept="image/*" style="display: none;">
-          <button id="btnEnrollSymbolFile" class="webcam-btn" style="background: #8e44ad; width: 100%;">Subir Foto de Símbolo (JPG/PNG)</button>
-        </div>
-
-        <div style="margin-top: 1rem;">
-          <h3 style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">Símbolos e Insignias Registradas</h3>
-          <div id="enrolledSymbolsList" style="max-height: 140px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;">
-            <span style="font-size: 0.75rem; color: var(--text-muted);">Sin símbolos registrados aún</span>
-          </div>
-        </div>
+      <h2 class="section-title">Filtrado de Objetivos</h2>
+      <p class="section-desc">Activa las clases que deseas rastrear y visualizar.</p>
+      
+      <div class="filter-actions">
+        <button id="selectAllFiltersBtn" class="filter-action-btn">Seleccionar Todos</button>
+        <button id="clearAllFiltersBtn" class="filter-action-btn danger">Ninguno</button>
       </div>
 
-      <!-- Sección Telemetría -->
-      <div style="border-top: 1px solid var(--bg-card-border); padding-top: 1.2rem; margin-top: 1.2rem;">
-        <h2 class="section-title">Telemetría del Sistema</h2>
-        <div class="telemetry-grid" style="margin-top: 0.8rem;">
-          <div class="stat-box">
-            <div class="stat-label">Rendimiento</div>
-            <div id="fpsStat" class="stat-val">0 FPS</div>
+      <!-- Filtros Dinámicos (Grid de Toggles) -->
+      <div id="dynamicFiltersContainer" class="filters-grid">
+        <!-- Switches generados por JS -->
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Ajustes Expertos (Ocultos por defecto) -->
+      <details class="expert-settings">
+        <summary>Ajustes Expertos del Motor (Opcional)</summary>
+        <div class="expert-content">
+          <!-- Factor EMA Alpha -->
+          <div class="control-group">
+            <div class="control-label">
+              <span>Suavizado EMA (&alpha;)</span>
+              <span id="emaValue" class="val-badge">0.15</span>
+            </div>
+            <input type="range" id="emaSlider" class="premium-slider" min="0.01" max="1.0" step="0.01" value="0.15">
           </div>
-          <div class="stat-box">
-            <div class="stat-label">Latencia Inferencia</div>
-            <div id="latencyStat" class="stat-val">0 ms</div>
+
+          <!-- Padding Slider -->
+          <div class="control-group">
+            <div class="control-label">
+              <span>Margen / Padding (%)</span>
+              <span id="paddingValue" class="val-badge">20%</span>
+            </div>
+            <input type="range" id="paddingSlider" class="premium-slider" min="0" max="60" step="5" value="20">
           </div>
-          <div class="stat-box">
-            <div class="stat-label">Objetivo Activo</div>
-            <div id="targetIdStat" class="stat-val">Auto</div>
+
+          <!-- Límite de FPS -->
+          <div class="control-group">
+            <div class="control-label">
+              <span>Límite de Rendimiento (FPS)</span>
+            </div>
+            <div class="select-wrapper">
+              <select id="maxFpsSelect" class="premium-select">
+                <option value="0">Máximo (Sin límite)</option>
+                <option value="30" selected>30 FPS (Recomendado)</option>
+                <option value="10">10 FPS (Bajo consumo)</option>
+              </select>
+            </div>
           </div>
-          <div class="stat-box">
-            <div class="stat-label">Dispositivo</div>
-            <div id="deviceStat" class="stat-val">CPU</div>
+
+          <!-- ID Objetivo -->
+          <div class="control-group">
+            <div class="control-label">
+              <span>Fijar ID de Objeto</span>
+            </div>
+            <input type="number" id="targetIdInput" class="premium-input" placeholder="Auto (-1)" value="-1">
+          </div>
+          
+          <div class="control-group checkbox-group" style="margin-top: 15px;">
+            <label class="premium-checkbox">
+              <input type="checkbox" id="overlayCheckbox" checked>
+              <span class="checkmark"></span>
+              Mostrar marcas (Bounding Boxes) en vista previa
+            </label>
           </div>
         </div>
-      </div>
+      </details>
 
     </aside>
 
   </main>
 
-  <!-- Modal de Imagen Maximizada -->
-  <div id="imageModal" class="modal-overlay" style="display: none;">
-    <div class="modal-content" style="max-width: 650px;">
-      <span class="modal-close" onclick="closeModal()">&times;</span>
-      <img id="modalImage" src="" alt="Captura Maximizada">
-      <div id="modalCaption" class="modal-caption"></div>
-      
-      <!-- Formulario de Enrolamiento Rápido desde la Captura -->
-      <div id="modalEnrollSection" style="margin-top: 15px; width: 100%; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 12px; display: none;">
-        <h4 style="font-size: 0.9rem; color: var(--accent-cyan); margin-bottom: 8px;">Enrolar Persona desde esta Captura</h4>
-        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-          <input type="text" id="modalEnrollName" placeholder="Nombre Completo" style="flex: 1; min-width: 130px; font-size: 0.8rem; padding: 6px 10px;">
-          <input type="text" id="modalEnrollDni" placeholder="DNI / Legajo" style="flex: 1; min-width: 100px; font-size: 0.8rem; padding: 6px 10px;">
-          <select id="modalEnrollRole" style="width: auto; font-size: 0.8rem; padding: 6px 10px;">
-            <option value="Empleado">Empleado</option>
-            <option value="VIP">VIP / Autorizado</option>
-            <option value="Visita">Visita</option>
-          </select>
-          <button id="btnModalEnroll" class="webcam-btn" style="background: #27ae60; font-size: 0.8rem; padding: 6px 14px;">Registrar e Identificar</button>
-        </div>
-      </div>
-
-      <!-- Eliminar Captura Individual -->
-      <button id="btnDeleteCurrentLog" style="background: rgba(231, 76, 60, 0.15); border: 1px solid #e74c3c; color: #e74c3c; font-size: 0.8rem; padding: 6px 12px; border-radius: 4px; cursor: pointer; margin-top: 12px; width: 100%;">Eliminar esta Captura del Registro</button>
-    </div>
-  </div>
-
   <!-- Modal Acerca De -->
   <div id="aboutModal" class="modal-overlay" style="display: none;">
-    <div class="modal-content" style="max-width: 800px; width: 90%; max-height: 85vh; overflow-y: auto; text-align: left; align-items: flex-start; padding: 25px;">
-      <span class="modal-close" onclick="closeAboutModal()">&times;</span>
-      <h2 style="font-size: 1.4rem; color: #fff; border-bottom: 1px solid var(--bg-card-border); padding-bottom: 10px; width: 100%; margin-bottom: 15px;">Acerca de Auto-Framing AI Core</h2>
+    <div class="modal-content" style="max-width: 800px; width: 90%; max-height: 85vh; overflow-y: auto; text-align: left; padding: 25px;">
+      <span class="modal-close" id="closeAboutModalBtn">&times;</span>
+      <h2 style="font-size: 1.4rem; color: #fff; border-bottom: 1px solid var(--bg-card-border); padding-bottom: 10px; margin-bottom: 15px;">Acerca del Sistema de Visión y Seguimiento</h2>
       
-      <div class="about-section" style="display: flex; flex-direction: column; gap: 20px; width: 100%; color: var(--text-main);">
-        
-        <!-- Sección 1 -->
+      <div class="about-section" style="display: flex; flex-direction: column; gap: 20px; color: var(--text-main);">
         <div>
-          <h3 style="color: var(--accent-cyan); font-size: 1.1rem; margin-bottom: 8px;">1. Funcionamiento del Sistema</h3>
-          <p style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.5;">
-            Esta plataforma implementa un sistema inteligente de <strong>Visión por Computadora y Auto-Framing</strong> en tiempo real. 
-            Su objetivo principal es realizar seguimiento (*tracking*) dinámico de sujetos u objetos de interés y generar un encuadre fluido ajustado al sujeto objetivo.
+          <h3 style="color: var(--accent-cyan); font-size: 1.1rem; margin-bottom: 8px;">🚀 Ciclo de Funcionamiento del Sistema</h3>
+          <p style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.5; margin-bottom: 10px;">
+            El flujo de procesamiento en tiempo real se ejecuta bajo el siguiente ciclo lógico:
           </p>
-          <ul style="font-size: 0.85rem; color: var(--text-muted); margin-top: 8px; padding-left: 20px; line-height: 1.6;">
-            <li><strong>Detección y Tracking O(1):</strong> Utiliza YOLOv8 con el algoritmo ByteTrack combinado con extrapolación de velocidad lineal.</li>
-            <li><strong>Motor Resorte Amortiguado (Damped Spring) & EMA:</strong> Elimina trepidaciones de la cámara virtual, garantizando movimientos suaves.</li>
-            <li><strong>Reconocimiento Biométrico Facial:</strong> Utiliza OpenCV YuNet + SFace (embeddings 128-D) para identificar personas enroladas.</li>
-            <li><strong>Reconocimiento Dinámico de Símbolos:</strong> Extractor de huellas visuales (256-D HSV+HOG) para identificar insignias, logos y escudos.</li>
+          <ul style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; padding-left: 20px; display: flex; flex-direction: column; gap: 5px;">
+            <li><strong>1. Captura de Entrada:</strong> Recepción de fotogramas directamente de una cámara web local (Webcam) o mediante simulación sintética de video de alta resolución.</li>
+            <li><strong>2. Inferencia y Detección:</strong> Los fotogramas se envían a la red neuronal YOLOv8 optimizada con OpenVINO, la cual analiza la escena en milisegundos buscando clases específicas.</li>
+            <li><strong>3. Seguimiento de Objetivos (Tracking):</strong> Algoritmos de asociación de movimiento (ByteTrack) asignan un ID único y persistente a cada objeto detectado a lo largo del tiempo.</li>
+            <li><strong>4. Procesamiento Cinemático (Auto-Framing):</strong> El motor calcula las coordenadas óptimas para encuadrar al objetivo activo, aplicando un filtro exponencial suavizado (EMA) que evita saltos bruscos de la cámara.</li>
+            <li><strong>5. Streaming MJPEG de Baja Latencia:</strong> El resultado procesado se comprime en formato JPEG y se transmite al navegador de forma continua.</li>
           </ul>
         </div>
 
-        <!-- Sección 2 -->
         <div>
-          <h3 style="color: var(--accent-teal); font-size: 1.1rem; margin-bottom: 8px;">2. Tecnologías Utilizadas</h3>
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 8px;">
-            <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
-              <strong style="color: #fff; font-size: 0.85rem;">Intel OpenVINO</strong>
-              <p style="font-size: 0.75rem; color: var(--text-muted);">Aceleración por hardware de redes neuronales en CPU/GPU.</p>
-            </div>
-            <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
-              <strong style="color: #fff; font-size: 0.85rem;">OpenCV & YOLOv8</strong>
-              <p style="font-size: 0.75rem; color: var(--text-muted);">Procesamiento de imágenes y detección de objetos a alta velocidad.</p>
-            </div>
-            <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
-              <strong style="color: #fff; font-size: 0.85rem;">FastAPI & Python</strong>
-              <p style="font-size: 0.75rem; color: var(--text-muted);">Backend asíncrono de baja latencia con streaming MJPEG.</p>
-            </div>
-            <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
-              <strong style="color: #fff; font-size: 0.85rem;">HTML5, Vanilla CSS & JS</strong>
-              <p style="font-size: 0.75rem; color: var(--text-muted);">Interfaz industrial sin librerías pesadas.</p>
-            </div>
-          </div>
-        </div>
-
-        <!-- Sección 3 -->
-        <div>
-          <h3 style="color: var(--accent-neon); font-size: 1.1rem; margin-bottom: 8px;">3. ¿Cómo Entrenar un Modelo Personalizado para Objetos Específicos?</h3>
-          <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 10px;">
-            Si deseas que el sistema detecte clases específicas (ej. modelos de autos, tipos de herramientas, armas, drones o componentes industriales), sigue este proceso en 4 pasos:
+          <h3 style="color: var(--accent-cyan); font-size: 1.1rem; margin-bottom: 8px;">⚙️ Tecnologías Utilizadas</h3>
+          <p style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.5;">
+            Desarrollado sobre un ecosistema de alto rendimiento 100% offline:
           </p>
-          
-          <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.82rem; color: var(--text-muted);">
-            <div style="background: rgba(16, 185, 129, 0.05); border-left: 3px solid var(--accent-neon); padding: 8px 12px;">
-              <strong style="color: #fff;">Paso 1: Recolección y Etiquetado de Dataset</strong><br>
-              Junta entre 100 y 300 imágenes por cada objeto específico. Usa herramientas como <strong>Roboflow</strong> o <strong>LabelImg</strong> para dibujar las cajas (*Bounding Boxes*) alrededor de los objetos y exporta en formato <code>YOLOv8 PyTorch</code>.
-            </div>
-
-            <div style="background: rgba(16, 185, 129, 0.05); border-left: 3px solid var(--accent-neon); padding: 8px 12px;">
-              <strong style="color: #fff;">Paso 2: Entrenamiento del Modelo (PyTorch / Ultralytics)</strong><br>
-              Ejecuta el entrenamiento en Google Colab o tu servidor GPU:<br>
-              <code style="background: rgba(0,0,0,0.5); padding: 2px 6px; border-radius: 4px; color: #10b981;">from ultralytics import YOLO; model = YOLO('yolov8n.pt'); model.train(data='custom_dataset.yaml', epochs=50)</code>
-            </div>
-
-            <div style="background: rgba(16, 185, 129, 0.05); border-left: 3px solid var(--accent-neon); padding: 8px 12px;">
-              <strong style="color: #fff;">Paso 3: Exportación al Formato Intel OpenVINO</strong><br>
-              Exporta los pesos entrenados a OpenVINO IR con una sola línea:<br>
-              <code style="background: rgba(0,0,0,0.5); padding: 2px 6px; border-radius: 4px; color: #10b981;">model.export(format='openvino')</code>
-            </div>
-
-            <div style="background: rgba(16, 185, 129, 0.05); border-left: 3px solid var(--accent-neon); padding: 8px 12px;">
-              <strong style="color: #fff;">Paso 4: Sustitución en el Proyecto</strong><br>
-              Coloca la carpeta resultante dentro del directorio <code>models/</code> del proyecto. Modifica <code>MODEL_PATH</code> en <code>app/core/config.py</code> ¡y el sistema rastreará tus objetos personalizados instantáneamente!
-            </div>
-          </div>
+          <ul style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; padding-left: 20px; margin-top: 5px;">
+            <li><strong>Intel OpenVINO Toolkit:</strong> Motor principal de inferencia IA que maximiza el rendimiento y minimiza la latencia de CPU local sin depender de la nube.</li>
+            <li><strong>FastAPI (Python):</strong> Backend ligero y asíncrono para gestionar las rutas del video stream, telemetría y API de configuraciones calientes.</li>
+            <li><strong>ByteTrack & YOLOv8:</strong> Estado del arte para la detección ágil multiclase y seguimiento persistente de múltiples trayectorias independientes.</li>
+            <li><strong>HTML5 / CSS3 / JavaScript Moderno:</strong> Frontend con diseño premium y adaptativo que opera de manera local autónoma.</li>
+          </ul>
         </div>
 
+        <div>
+          <h3 style="color: var(--accent-cyan); font-size: 1.1rem; margin-bottom: 8px;">🖥️ Funcionalidades Clave</h3>
+          <ul style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; padding-left: 20px; display: flex; flex-direction: column; gap: 5px;">
+            <li><strong>Modo Encuadre:</strong> Recorta la imagen centrándose exclusivamente en el sujeto objetivo y ajustando el margen suavemente en tiempo real.</li>
+            <li><strong>Vista Completa (Overlay):</strong> Muestra toda la amplitud de la cámara dibujando recuadros, etiquetas e IDs sobre todos los objetos detectados sin realizar recortes.</li>
+            <li><strong>Vista Dual:</strong> Concatenación lado a lado de la transmisión original junto con el encuadre recortado de la IA, ideal para monitoreo de comparación.</li>
+            <li><strong>Filtrado Dinámico:</strong> Menú reactivo que expone las clases específicas de cada modelo cargado (ej. coche, persona, tanque militar) y permite habilitar o deshabilitar detecciones con interruptores para evitar ruidos visuales.</li>
+            <li><strong>Ajustes Expertos:</strong> Controles deslizantes para ajustar el factor de suavizado del encuadre (EMA Alpha) y el margen de seguridad de la visualización (Padding).</li>
+          </ul>
+        </div>
       </div>
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=1.0.13"></script>
+  <script src="/static/js/app.js?v=2.0.0"></script>
 </body>
 </html>

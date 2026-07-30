@@ -47,22 +47,18 @@ pipeline_stats = {
     "last_telemetry": {}
 }
 
-CATEGORY_MAP = {
-    "ALL": None,                       # Todas las clases del modelo activo
-    "PERSON": [0, 5, 6],               # Personas (COCO ID 0, Militar IDs 0, 5, 6)
-    "OBJECTS": list(range(1, 80)),     # Todos los objetos inanimados
-    "SYMBOLS": None                    # Modo dedicado a Insignias, Rangos y Logos
-}
+# Endpoint de modelos estáticos en lugar de CATEGORY_MAP
 
 class SettingsUpdateModel(BaseModel):
     ema_alpha: Optional[float] = Field(None, ge=0.01, le=1.0, description="Factor de suavizado EMA")
     padding: Optional[float] = Field(None, ge=0.0, le=1.0, description="Porcentaje de padding alrededor del objeto")
     aspect_ratio: Optional[str] = Field(None, description="Relación de aspecto: '16:9', '9:16', '1:1', 'FREE'")
     target_id: Optional[int] = Field(None, description="ID del objeto a seguir (-1 para selección automática)")
-    target_category: Optional[str] = Field(None, description="Categoría a buscar: ALL, SCISSORS, PERSON, etc.")
+    target_classes: Optional[List[int]] = Field(None, description="Lista de IDs de clases a rastrear")
     draw_overlays: Optional[bool] = Field(None, description="Mostrar/Ocultar overlays en la vista previa")
     detection_paused: Optional[bool] = Field(None, description="Pausar la inferencia de IA para ahorrar CPU")
     active_model: Optional[str] = Field(None, description="Modelo de visión: 'STANDARD' o 'MILITARY'")
+    max_fps: Optional[int] = Field(None, description="Límite de FPS para la transmisión")
 
 @router.get("/health")
 async def health_check():
@@ -88,18 +84,24 @@ async def update_settings(payload: SettingsUpdateModel):
     )
     if payload.draw_overlays is not None:
         settings.DRAW_OVERLAYS = payload.draw_overlays
-    if payload.target_category is not None:
-        cat_upper = payload.target_category.upper()
-        settings.TARGET_CLASSES = CATEGORY_MAP.get(cat_upper, None)
-        settings.ENABLE_SYMBOL_RECOGNITION = (cat_upper == "SYMBOLS")
+    if payload.target_classes is not None:
+        # Si la lista tiene elementos o está vacía, se asigna (si es [-1], significa 'Todos')
+        if len(payload.target_classes) > 0 and payload.target_classes[0] == -1:
+            settings.TARGET_CLASSES = None
+        else:
+            settings.TARGET_CLASSES = payload.target_classes
+        # Si no hay filtros o si no hay elementos específicos, desactivar el reconocimiento de símbolos a menos que sea explícito
+        settings.ENABLE_SYMBOL_RECOGNITION = False 
         symbol_recognition_cache.clear()
     if payload.detection_paused is not None:
         settings.DETECTION_PAUSED = payload.detection_paused
     if payload.active_model is not None:
-        new_path = "models/military_openvino_model" if payload.active_model.upper() == "MILITARY" else "models/yolov8n_openvino_model"
+        new_path = "models/military_assets_yolov8n_openvino_model" if payload.active_model.upper() == "MILITARY" else "models/yolov8n_openvino_model"
         if settings.MODEL_PATH != new_path:
             detector.reload_model(new_path)
             face_recognition_cache.clear()
+    if payload.max_fps is not None:
+        settings.MAX_FPS = payload.max_fps
 
     return {
         "status": "success",
@@ -110,7 +112,8 @@ async def update_settings(payload: SettingsUpdateModel):
             "aspect_ratio": framing_engine.aspect_ratio,
             "target_id": framing_engine.target_id,
             "draw_overlays": settings.DRAW_OVERLAYS,
-            "detection_paused": settings.DETECTION_PAUSED
+            "detection_paused": settings.DETECTION_PAUSED,
+            "max_fps": settings.MAX_FPS
         }
     }
 
@@ -130,6 +133,45 @@ async def get_status():
             "target_id": framing_engine.target_id
         },
         "telemetry": pipeline_stats["last_telemetry"]
+    }
+
+@router.get("/api/models")
+async def get_models():
+    """Retorna los modelos disponibles y sus clases para renderizar los filtros dinámicamente."""
+    return {
+        "models": [
+            {
+                "id": "STANDARD",
+                "name": "Standard COCO (80 Classes)",
+                "classes": {
+                    0: "person", 1: "bicycle", 2: "car", 3: "motorcycle", 4: "airplane", 
+                    5: "bus", 6: "train", 7: "truck", 8: "boat", 9: "traffic light", 
+                    10: "fire hydrant", 11: "stop sign", 12: "parking meter", 13: "bench", 14: "bird", 
+                    15: "cat", 16: "dog", 17: "horse", 18: "sheep", 19: "cow", 
+                    20: "elephant", 21: "bear", 22: "zebra", 23: "giraffe", 24: "backpack", 
+                    25: "umbrella", 26: "handbag", 27: "tie", 28: "suitcase", 29: "frisbee", 
+                    30: "skis", 31: "snowboard", 32: "sports ball", 33: "kite", 34: "baseball bat", 
+                    35: "baseball glove", 36: "skateboard", 37: "surfboard", 38: "tennis racket", 39: "bottle", 
+                    40: "wine glass", 41: "cup", 42: "fork", 43: "knife", 44: "spoon", 
+                    45: "bowl", 46: "banana", 47: "apple", 48: "sandwich", 49: "orange", 
+                    50: "broccoli", 51: "carrot", 52: "hot dog", 53: "pizza", 54: "donut", 
+                    55: "cake", 56: "chair", 57: "couch", 58: "potted plant", 59: "bed", 
+                    60: "dining table", 61: "toilet", 62: "tv", 63: "laptop", 64: "mouse", 
+                    65: "remote", 66: "keyboard", 67: "cell phone", 68: "microwave", 69: "oven", 
+                    70: "toaster", 71: "sink", 72: "refrigerator", 73: "book", 74: "clock", 
+                    75: "vase", 76: "scissors", 77: "teddy bear", 78: "hair drier", 79: "toothbrush"
+                }
+            },
+            {
+                "id": "MILITARY",
+                "name": "Military Arsenal & Troops (12 Classes)",
+                "classes": {
+                    0: "camouflage_soldier", 1: "weapon", 2: "military_tank", 3: "military_truck", 
+                    4: "military_vehicle", 5: "civilian", 6: "soldier", 7: "civilian_vehicle", 
+                    8: "military_artillery", 9: "trench", 10: "military_aircraft", 11: "military_warship"
+                }
+            }
+        ]
     }
 
 @router.get("/api/logs")
@@ -206,6 +248,14 @@ def generate_mjpeg_stream(mode: str = "framed"):
 
     while True:
         try:
+            # Throttling dinámico para limitar FPS y ahorrar CPU
+            if settings.MAX_FPS > 0:
+                now = time.time()
+                elapsed = now - last_frame_time
+                target_interval = 1.0 / settings.MAX_FPS
+                if elapsed < target_interval:
+                    time.sleep(target_interval - elapsed)
+
             ret, frame = video_reader.read()
             if not ret or frame is None:
                 time.sleep(0.01)
@@ -316,7 +366,6 @@ async def process_frame(
     padding: Optional[float] = None,
     ema_alpha: Optional[float] = None,
     target_id: Optional[int] = None,
-    target_category: Optional[str] = Query("ALL"),
     aspect_ratio: Optional[str] = None
 ):
     """
@@ -340,7 +389,7 @@ async def process_frame(
         cv2.putText(frame, "Procesando camara de navegacion...", (100, 360), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 180), 2)
 
     start_infer = time.time()
-    target_classes = CATEGORY_MAP.get((target_category or "ALL").upper(), None)
+    target_classes = settings.TARGET_CLASSES
     tracked_objects = detector.detect_and_track(frame, conf=settings.CONFIDENCE_THRESHOLD, classes=target_classes)
     infer_latency = (time.time() - start_infer) * 1000.0
 

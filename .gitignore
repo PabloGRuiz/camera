@@ -36,3 +36,6 @@ data/*
 .vscode/
 .idea/
 .DS_Store
+
+# Directorios de entrenamiento y temporales
+runs/
