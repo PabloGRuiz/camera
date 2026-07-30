@@ -23,6 +23,14 @@ class OpenVINODetector:
         self.frame_counter = 0
         self.active_trackers = {}  # Dict for track_id -> dict of state
         self.use_int8 = getattr(settings, "USE_INT8_QUANTIZATION", False)
+        self._load_model()
+
+    def reload_model(self, model_path: str = None):
+        """Recarga en caliente el modelo OpenVINO activo."""
+        if model_path:
+            settings.MODEL_PATH = model_path
+        logger.info(f"Recargando modelo de visión OpenVINO desde: {settings.MODEL_PATH}")
+        self._load_model()
 
     def _load_model(self):
         target_path = Path(settings.MODEL_PATH)

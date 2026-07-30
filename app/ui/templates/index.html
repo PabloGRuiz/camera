@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Object-Centered Tracking & Auto-Framing | Intel OpenVINO</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=1.0.12">
+  <link rel="stylesheet" href="/static/css/style.css?v=1.0.13">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -101,6 +101,17 @@
             <span>ID de Objeto Objetivo</span>
           </div>
           <input type="number" id="targetIdInput" placeholder="Automático (-1 u Omitir)" value="-1">
+        </div>
+
+        <!-- Selección de Modelo de Visión IA -->
+        <div class="control-group" style="margin-top: 1.2rem;">
+          <div class="control-label">
+            <span>Modelo de Visión IA</span>
+          </div>
+          <select id="activeModelSelect">
+            <option value="STANDARD" selected>Estándar COCO (Personas y Objetos)</option>
+            <option value="MILITARY">Arsenal Militar y Tropas (12 Clases)</option>
+          </select>
         </div>
 
         <!-- Filtro de Categoría de Objeto -->
@@ -317,6 +328,6 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=1.0.12"></script>
+  <script src="/static/js/app.js?v=1.0.13"></script>
 </body>
 </html>

@@ -62,6 +62,7 @@ class SettingsUpdateModel(BaseModel):
     target_category: Optional[str] = Field(None, description="Categoría a buscar: ALL, SCISSORS, PERSON, etc.")
     draw_overlays: Optional[bool] = Field(None, description="Mostrar/Ocultar overlays en la vista previa")
     detection_paused: Optional[bool] = Field(None, description="Pausar la inferencia de IA para ahorrar CPU")
+    active_model: Optional[str] = Field(None, description="Modelo de visión: 'STANDARD' o 'MILITARY'")
 
 @router.get("/health")
 async def health_check():
@@ -72,7 +73,8 @@ async def health_check():
         "version": settings.APP_VERSION,
         "openvino_device": detector.device,
         "is_synthetic_mode": detector.is_synthetic_mode,
-        "video_source": str(settings.VIDEO_SOURCE)
+        "video_source": str(settings.VIDEO_SOURCE),
+        "active_model_path": settings.MODEL_PATH
     }
 
 @router.post("/api/settings")
@@ -93,6 +95,11 @@ async def update_settings(payload: SettingsUpdateModel):
         symbol_recognition_cache.clear()
     if payload.detection_paused is not None:
         settings.DETECTION_PAUSED = payload.detection_paused
+    if payload.active_model is not None:
+        new_path = "models/military_openvino_model" if payload.active_model.upper() == "MILITARY" else "models/yolov8n_openvino_model"
+        if settings.MODEL_PATH != new_path:
+            detector.reload_model(new_path)
+            face_recognition_cache.clear()
 
     return {
         "status": "success",

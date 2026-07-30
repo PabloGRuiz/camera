@@ -12,9 +12,9 @@ class Settings(BaseSettings):
     
     # Inferencia & Modelo
     MODEL_NAME: str = "yolov8n"
-    MODEL_PATH: str = "models/military_openvino_model"
+    MODEL_PATH: str = "models/yolov8n_openvino_model"
     OPENVINO_DEVICE: str = Field(default="CPU", description="Dispositivo OpenVINO: CPU, GPU, MYRIAD, etc.")
-    CONFIDENCE_THRESHOLD: float = 0.45
+    CONFIDENCE_THRESHOLD: float = 0.35
     DETECTION_PAUSED: bool = False
     TARGET_CLASSES: Union[List[int], None] = None  # None = Detectar todas las clases del modelo activo por defecto
     ENABLE_SYMBOL_RECOGNITION: bool = False        # Desactivado por defecto para evitar falsos positivos con objetos

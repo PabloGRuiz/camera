@@ -309,6 +309,7 @@ document.addEventListener('DOMContentLoaded', () => {
       aspect_ratio: aspectRatioSelect.value,
       draw_overlays: overlayCheckbox.checked,
       target_category: targetCategorySelect ? targetCategorySelect.value : 'ALL',
+      active_model: activeModelSelect ? activeModelSelect.value : 'STANDARD',
       detection_paused: isDetectionPaused
     };
 
@@ -318,15 +319,13 @@ document.addEventListener('DOMContentLoaded', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      if (!response.ok) {
-        console.warn('Error al actualizar ajustes en el servidor');
-      }
+      const data = await response.json();
     } catch (err) {
-      console.error('Error de red al actualizar ajustes:', err);
+      console.error('Error al actualizar ajustes:', err);
     }
   }
 
-  // Event Listeners para sliders e inputs
+  // Event Listeners para Controles en Tiempo Real
   emaSlider.addEventListener('input', (e) => {
     emaValue.textContent = parseFloat(e.target.value).toFixed(2);
     postSettings();
@@ -337,17 +336,11 @@ document.addEventListener('DOMContentLoaded', () => {
     postSettings();
   });
 
-  targetIdInput.addEventListener('change', () => {
-    postSettings();
-  });
-
-  aspectRatioSelect.addEventListener('change', () => {
-    postSettings();
-  });
-
-  overlayCheckbox.addEventListener('change', () => {
-    postSettings();
-  });
+  targetIdInput.addEventListener('change', postSettings);
+  aspectRatioSelect.addEventListener('change', postSettings);
+  overlayCheckbox.addEventListener('change', postSettings);
+  if (targetCategorySelect) targetCategorySelect.addEventListener('change', postSettings);
+  if (activeModelSelect) activeModelSelect.addEventListener('change', postSettings);
 
   // Polling de Telemetría cada 1 segundo
   async function fetchStatus() {
