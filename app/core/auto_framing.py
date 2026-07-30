@@ -303,7 +303,9 @@ class AutoFramingEngine:
             sym_id = obj.get("symbol_identity")
             if face_id:
                 color = (0, 255, 120)  # Verde esmeralda para coincidencia facial
-                label = f"ID:{track_id} {face_id['name']} ({face_id['similarity']}%)"
+                role_str = face_id.get('role', '')
+                role_info = f" ({role_str})" if role_str else ""
+                label = f"ID:{track_id} [{cls_name}] {face_id['name']}{role_info}"
             elif sym_id:
                 color = (255, 200, 0)  # Cian/Dorado para coincidencia de símbolo
                 label = f"ID:{track_id} [{sym_id['category']}: {sym_id['name']} ({sym_id['similarity']}%)]"
