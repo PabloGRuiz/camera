@@ -5,7 +5,7 @@ services:
       dockerfile: Dockerfile
     container_name: auto_framing_app
     ports:
-      - "8080:8000"
+      - "8081:8000"
     volumes:
       - ./models:/workspace/models
       - ./data:/workspace/data

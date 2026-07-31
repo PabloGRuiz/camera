@@ -52,10 +52,9 @@ document.addEventListener('DOMContentLoaded', () => {
         activeModelSelect.appendChild(opt);
       });
       
-      // Auto-seleccionar MILITARY por defecto si existe, si no, el primero
-      const hasMilitary = availableModels.find(m => m.id === 'MILITARY');
-      if(hasMilitary) {
-        activeModelSelect.value = 'MILITARY';
+      const hasStandard = availableModels.find(m => m.id === 'STANDARD');
+      if (hasStandard) {
+        activeModelSelect.value = 'STANDARD';
       }
       
       handleModelChange();
@@ -71,11 +70,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!modelData) return;
 
     currentModelClasses = modelData.classes;
-    // Por defecto, activar todas las clases
     activeClassIds = new Set(Object.keys(currentModelClasses).map(Number));
     
     renderFilters();
-    postSettings(); // Notificar al backend el cambio de modelo y filtros
+    postSettings();
   }
 
   function renderFilters() {
@@ -88,7 +86,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const toggle = document.createElement('div');
       toggle.className = `filter-toggle ${isActive ? 'active' : ''}`;
       
-      // Nombre traducido/formateado
       let displayName = name.replace(/_/g, ' ');
       
       toggle.innerHTML = `
@@ -131,10 +128,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  loadModels(); // Iniciar carga
+  loadModels();
 
-
-  // Actualizar URL del video stream (Servidor MJPEG)
   function updateStreamUrl() {
     if (videoFeed) videoFeed.style.display = 'block';
     videoFeed.src = `/video_feed?mode=${currentMode}&t=${Date.now()}`;
@@ -143,7 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Webcam Setup
   if (webcamToggleBtn) {
     webcamToggleBtn.addEventListener('click', async () => {
-      if (!isWebcamActive || screenStream) { // Permitir activar cámara si está compartiendo pantalla
+      if (!isWebcamActive || screenStream) {
         try {
           if (screenStream) stopScreenShare();
           webcamStream = await navigator.mediaDevices.getUserMedia({
@@ -183,7 +178,7 @@ document.addEventListener('DOMContentLoaded', () => {
           webcamVideo.srcObject = screenStream;
           await webcamVideo.play();
           
-          isWebcamActive = true; // Compartir pantalla también usa el pipeline de webcam
+          isWebcamActive = true;
           screenShareToggleBtn.classList.add('active');
           screenShareToggleBtn.textContent = 'Detener Pantalla';
           
@@ -268,11 +263,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-
   // Enviar actualización de parámetros al servidor
   async function postSettings() {
-    // Si están todos seleccionados, enviamos [-1] o None para decirle al backend "Rastrea Todo"
-    // Si no hay ninguno, enviamos [] (lista vacía)
     let classesPayload = Array.from(activeClassIds);
     if (classesPayload.length === Object.keys(currentModelClasses).length) {
       classesPayload = [-1]; 
@@ -299,7 +291,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Listeners Ajustes Expertos
   if(emaSlider) {
     emaSlider.addEventListener('input', (e) => {
       emaValue.textContent = parseFloat(e.target.value).toFixed(2);
@@ -339,7 +330,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Modal Acerca De
+  // Modales: Acerca De
   const aboutBtn = document.getElementById('aboutBtn');
   const aboutModal = document.getElementById('aboutModal');
   const closeAboutModalBtn = document.getElementById('closeAboutModalBtn');
@@ -348,6 +339,281 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   if (closeAboutModalBtn && aboutModal) {
     closeAboutModalBtn.addEventListener('click', () => aboutModal.style.display = 'none');
+  }
+
+  // Modales: Enrolamiento y Registro
+  const enrollModalBtn = document.getElementById('enrollModalBtn');
+  const enrollModal = document.getElementById('enrollModal');
+  const closeEnrollModalBtn = document.getElementById('closeEnrollModalBtn');
+
+  const logsModalBtn = document.getElementById('logsModalBtn');
+  const logsModal = document.getElementById('logsModal');
+  const closeLogsModalBtn = document.getElementById('closeLogsModalBtn');
+
+  if (enrollModalBtn && enrollModal) {
+    enrollModalBtn.addEventListener('click', () => {
+      enrollModal.style.display = 'flex';
+      loadEnrolledPersons();
+      startEnrollWebcam();
+    });
+  }
+  if (closeEnrollModalBtn && enrollModal) {
+    closeEnrollModalBtn.addEventListener('click', () => {
+      enrollModal.style.display = 'none';
+      stopEnrollWebcam();
+    });
+  }
+
+  if (logsModalBtn && logsModal) {
+    logsModalBtn.addEventListener('click', () => {
+      logsModal.style.display = 'flex';
+      loadLogs();
+    });
+  }
+  if (closeLogsModalBtn && logsModal) {
+    closeLogsModalBtn.addEventListener('click', () => {
+      logsModal.style.display = 'none';
+    });
+  }
+
+  // Formulario y Lógica de Enrolamiento
+  const enrollForm = document.getElementById('enrollForm');
+  const enrollName = document.getElementById('enrollName');
+  const enrollDni = document.getElementById('enrollDni');
+  const enrollRole = document.getElementById('enrollRole');
+  const captureMethodRadios = document.getElementsByName('captureMethod');
+  const cameraSourceBox = document.getElementById('cameraSourceBox');
+  const fileSourceBox = document.getElementById('fileSourceBox');
+  const enrollFileInput = document.getElementById('enrollFileInput');
+  
+  const enrollWebcamVideo = document.getElementById('enrollWebcamVideo');
+  const enrollCanvas = document.getElementById('enrollCanvas');
+  const enrollSnapshotPreview = document.getElementById('enrollSnapshotPreview');
+  const takeEnrollSnapshotBtn = document.getElementById('takeEnrollSnapshotBtn');
+  const retakeEnrollSnapshotBtn = document.getElementById('retakeEnrollSnapshotBtn');
+  const enrollMessage = document.getElementById('enrollMessage');
+  const enrolledPersonsList = document.getElementById('enrolledPersonsList');
+  const refreshPersonsBtn = document.getElementById('refreshPersonsBtn');
+
+  let enrollWebcamStream = null;
+  let enrollCapturedB64 = null;
+
+  captureMethodRadios.forEach(radio => {
+    radio.addEventListener('change', (e) => {
+      if (e.target.value === 'camera') {
+        cameraSourceBox.style.display = 'block';
+        fileSourceBox.style.display = 'none';
+        startEnrollWebcam();
+      } else {
+        cameraSourceBox.style.display = 'none';
+        fileSourceBox.style.display = 'block';
+        stopEnrollWebcam();
+      }
+    });
+  });
+
+  async function startEnrollWebcam() {
+    if (enrollWebcamStream) return;
+    try {
+      enrollWebcamStream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 640, height: 480 }
+      });
+      enrollWebcamVideo.srcObject = enrollWebcamStream;
+      await enrollWebcamVideo.play();
+      enrollWebcamVideo.style.display = 'block';
+      enrollSnapshotPreview.style.display = 'none';
+      takeEnrollSnapshotBtn.style.display = 'block';
+      retakeEnrollSnapshotBtn.style.display = 'none';
+      enrollCapturedB64 = null;
+    } catch (e) {
+      console.error('Error accediendo a webcam de enrolamiento:', e);
+    }
+  }
+
+  function stopEnrollWebcam() {
+    if (enrollWebcamStream) {
+      enrollWebcamStream.getTracks().forEach(track => track.stop());
+      enrollWebcamStream = null;
+    }
+  }
+
+  if (takeEnrollSnapshotBtn) {
+    takeEnrollSnapshotBtn.addEventListener('click', () => {
+      if (!enrollWebcamVideo) return;
+      const vw = enrollWebcamVideo.videoWidth || 640;
+      const vh = enrollWebcamVideo.videoHeight || 480;
+      enrollCanvas.width = vw;
+      enrollCanvas.height = vh;
+      const ctx = enrollCanvas.getContext('2d');
+      ctx.drawImage(enrollWebcamVideo, 0, 0, vw, vh);
+
+      enrollCapturedB64 = enrollCanvas.toDataURL('image/jpeg', 0.9);
+      enrollSnapshotPreview.src = enrollCapturedB64;
+      enrollSnapshotPreview.style.display = 'block';
+      enrollWebcamVideo.style.display = 'none';
+      takeEnrollSnapshotBtn.style.display = 'none';
+      retakeEnrollSnapshotBtn.style.display = 'block';
+    });
+  }
+
+  if (retakeEnrollSnapshotBtn) {
+    retakeEnrollSnapshotBtn.addEventListener('click', () => {
+      enrollCapturedB64 = null;
+      enrollSnapshotPreview.style.display = 'none';
+      enrollWebcamVideo.style.display = 'block';
+      takeEnrollSnapshotBtn.style.display = 'block';
+      retakeEnrollSnapshotBtn.style.display = 'none';
+    });
+  }
+
+  if (enrollForm) {
+    enrollForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      enrollMessage.innerHTML = 'Procesando biometría...';
+      enrollMessage.style.color = 'var(--accent-cyan)';
+
+      const name = enrollName.value.trim();
+      const dni = enrollDni.value.trim();
+      const role = enrollRole.value;
+      const selectedMethod = document.querySelector('input[name="captureMethod"]:checked').value;
+
+      try {
+        let res;
+        if (selectedMethod === 'camera') {
+          if (!enrollCapturedB64) {
+            enrollMessage.innerHTML = 'Primero debes tomar una foto con la cámara.';
+            enrollMessage.style.color = '#f87171';
+            return;
+          }
+          const payload = { name, dni, role, image_b64: enrollCapturedB64 };
+          res = await fetch('/api/faces/enroll_b64', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+        } else {
+          const file = enrollFileInput.files[0];
+          if (!file) {
+            enrollMessage.innerHTML = 'Primero selecciona un archivo de imagen.';
+            enrollMessage.style.color = '#f87171';
+            return;
+          }
+          const formData = new FormData();
+          formData.append('file', file);
+          res = await fetch(`/api/faces/enroll?name=${encodeURIComponent(name)}&dni=${encodeURIComponent(dni)}&role=${encodeURIComponent(role)}`, {
+            method: 'POST',
+            body: formData
+          });
+        }
+
+        const data = await res.json();
+        if (res.ok) {
+          enrollMessage.innerHTML = data.message || 'Persona enrolada correctamente.';
+          enrollMessage.style.color = 'var(--accent-teal)';
+          enrollName.value = '';
+          enrollDni.value = '';
+          if (selectedMethod === 'camera' && retakeEnrollSnapshotBtn) {
+            retakeEnrollSnapshotBtn.click();
+          }
+          loadEnrolledPersons();
+        } else {
+          enrollMessage.innerHTML = `Error: ${data.detail || 'No se pudo enrolar'}`;
+          enrollMessage.style.color = '#f87171';
+        }
+      } catch (err) {
+        enrollMessage.innerHTML = `Error de red: ${err.message}`;
+        enrollMessage.style.color = '#f87171';
+      }
+    });
+  }
+
+  async function loadEnrolledPersons() {
+    if (!enrolledPersonsList) return;
+    try {
+      const res = await fetch('/api/faces/list');
+      const data = await res.json();
+      const persons = data.persons || [];
+
+      if (persons.length === 0) {
+        enrolledPersonsList.innerHTML = '<p style="color: var(--text-muted); font-size: 0.85rem;">No hay personas enroladas aún.</p>';
+        return;
+      }
+
+      enrolledPersonsList.innerHTML = persons.map(p => `
+        <div style="background: rgba(255,255,255,0.05); border: 1px solid var(--bg-card-border); padding: 10px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <div style="font-weight: 600; font-size: 0.9rem; color: #fff;">${p.name}</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">DNI: ${p.dni} | Rol: ${p.role}</div>
+          </div>
+          <button onclick="deletePerson(${p.id})" class="filter-action-btn danger" style="padding: 4px 8px;">Eliminar</button>
+        </div>
+      `).join('');
+    } catch (e) {
+      console.error('Error cargando lista de personal:', e);
+    }
+  }
+
+  window.deletePerson = async function(id) {
+    if (!confirm('¿Seguro que deseas eliminar a esta persona?')) return;
+    try {
+      const res = await fetch(`/api/faces/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        loadEnrolledPersons();
+      }
+    } catch (e) {}
+  };
+
+  if (refreshPersonsBtn) refreshPersonsBtn.addEventListener('click', loadEnrolledPersons);
+
+  // Historial de Logs
+  const logsGrid = document.getElementById('logsGrid');
+  const refreshLogsBtn = document.getElementById('refreshLogsBtn');
+  const clearLogsBtn = document.getElementById('clearLogsBtn');
+
+  async function loadLogs() {
+    if (!logsGrid) return;
+    try {
+      const res = await fetch('/api/logs');
+      const logs = await res.json();
+
+      if (!logs || logs.length === 0) {
+        logsGrid.innerHTML = '<p style="color: var(--text-muted); font-size: 0.9rem; grid-column: 1 / -1;">No hay capturas registradas aún. El sistema tomará una captura cuando detecte a una persona.</p>';
+        return;
+      }
+
+      logsGrid.innerHTML = logs.map(log => {
+        const isRegistered = log.status !== 'No Registrado' && log.name !== 'Desconocido';
+        const borderColor = isRegistered ? 'var(--accent-teal)' : '#f87171';
+        const badgeBg = isRegistered ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+        return `
+          <div style="background: rgba(0,0,0,0.4); border: 1px solid ${borderColor}; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column;">
+            <div style="padding: 8px 12px; background: rgba(0,0,0,0.6); display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 0.8rem; font-weight: 600; color: var(--accent-cyan);">Hora: ${log.timestamp}</span>
+              <span style="font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; background: ${badgeBg}; color: ${borderColor}; font-weight: 600;">${log.status}</span>
+            </div>
+            <div style="width: 100%; aspect-ratio: 16/9; background: #000; overflow: hidden;">
+              <img src="${log.image}" style="width: 100%; height: 100%; object-fit: cover;" alt="${log.name}">
+            </div>
+            <div style="padding: 8px 12px; font-weight: 600; font-size: 0.9rem; color: #fff;">
+              ${log.name}
+            </div>
+          </div>
+        `;
+      }).join('');
+    } catch (e) {
+      console.error('Error cargando logs:', e);
+    }
+  }
+
+  if (refreshLogsBtn) refreshLogsBtn.addEventListener('click', loadLogs);
+  if (clearLogsBtn) {
+    clearLogsBtn.addEventListener('click', async () => {
+      if (!confirm('¿Deseas vaciar todo el historial de capturas?')) return;
+      try {
+        await fetch('/api/logs', { method: 'DELETE' });
+        loadLogs();
+      } catch (e) {}
+    });
   }
 
   // Polling de Telemetría cada 1 segundo

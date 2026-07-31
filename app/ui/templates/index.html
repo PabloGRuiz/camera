@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sistema de Visión y Seguimiento de Objetos | Intel OpenVINO</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=2.0.0">
+  <link rel="stylesheet" href="/static/css/style.css?v=2.3.0">
 </head>
 <body>
 
@@ -12,11 +12,13 @@
   <header class="navbar">
     <div class="brand">
       <div class="brand-icon">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
       </div>
       <div class="brand-title">Sistema de Seguimiento y Detección de Objetivos</div>
     </div>
-    <div style="display: flex; align-items: center; gap: 15px;">
+    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+      <button id="enrollModalBtn" class="webcam-btn" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(16, 185, 129, 0.1)); border-color: rgba(16, 185, 129, 0.4);">Enrolar Personal</button>
+      <button id="logsModalBtn" class="webcam-btn" style="background: linear-gradient(135deg, rgba(0, 255, 224, 0.2), rgba(0, 255, 224, 0.1)); border-color: rgba(0, 255, 224, 0.4);">Registro Capturas</button>
       <button id="aboutBtn" class="webcam-btn ghost">Acerca de</button>
       <div class="status-badge">
         <div class="status-dot"></div>
@@ -35,7 +37,7 @@
         <div class="header-actions">
           <button id="webcamToggleBtn" class="webcam-btn">Activar Cámara</button>
           <button id="screenShareToggleBtn" class="webcam-btn" style="background: #e67e22;">Transmitir Pantalla</button>
-          <button id="fullscreenBtn" class="webcam-btn ghost">⛶ Fullscreen</button>
+          <button id="fullscreenBtn" class="webcam-btn ghost">Pantalla Completa</button>
           <div class="mode-selector">
             <button class="mode-btn active" data-mode="framed">Modo Encuadre</button>
             <button class="mode-btn" data-mode="annotated">Vista Completa (Overlay)</button>
@@ -151,6 +153,109 @@
 
   </main>
 
+  <!-- Modal Enrolamiento de Personal -->
+  <div id="enrollModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content" style="max-width: 850px; width: 95%; max-height: 90vh; overflow-y: auto; padding: 25px;">
+      <span class="modal-close" id="closeEnrollModalBtn">&times;</span>
+      <h2 style="font-size: 1.3rem; color: #fff; border-bottom: 1px solid var(--bg-card-border); padding-bottom: 10px; margin-bottom: 15px;">
+        Enrolamiento de Personal
+      </h2>
+      
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <!-- Formulario -->
+        <div style="background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; border: 1px solid var(--bg-card-border);">
+          <h3 style="font-size: 1rem; color: var(--accent-cyan); margin-bottom: 12px;">Nuevo Registro</h3>
+          <form id="enrollForm">
+            <div class="control-group">
+              <label class="control-label">Nombre Completo *</label>
+              <input type="text" id="enrollName" class="premium-input" placeholder="Ej: Juan Pérez" required>
+            </div>
+            <div class="control-group">
+              <label class="control-label">DNI / Identificación *</label>
+              <input type="text" id="enrollDni" class="premium-input" placeholder="Ej: 12345678" required>
+            </div>
+            <div class="control-group">
+              <label class="control-label">Rol / Categoría</label>
+              <div class="select-wrapper">
+                <select id="enrollRole" class="premium-select">
+                  <option value="Usuario">Usuario</option>
+                  <option value="Empleado">Empleado</option>
+                  <option value="VIP">VIP</option>
+                  <option value="Seguridad">Seguridad</option>
+                  <option value="Militar">Militar</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="control-group">
+              <label class="control-label">Método de Captura de Rostro</label>
+              <div style="display: flex; gap: 15px; margin-bottom: 10px;">
+                <label style="font-size: 0.85rem; cursor: pointer; color: var(--text-main);">
+                  <input type="radio" name="captureMethod" value="camera" checked> Usar Cámara Web
+                </label>
+                <label style="font-size: 0.85rem; cursor: pointer; color: var(--text-main);">
+                  <input type="radio" name="captureMethod" value="file"> Subir Foto Local
+                </label>
+              </div>
+            </div>
+
+            <!-- Previsualización Cámara -->
+            <div id="cameraSourceBox" style="margin-bottom: 12px;">
+              <div style="width: 100%; height: 180px; background: #000; border-radius: 8px; overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center;">
+                <video id="enrollWebcamVideo" autoplay playsinline muted style="width: 100%; height: 100%; object-fit: cover;"></video>
+                <canvas id="enrollCanvas" style="display:none;"></canvas>
+                <img id="enrollSnapshotPreview" style="display:none; width: 100%; height: 100%; object-fit: cover;" alt="Captura">
+              </div>
+              <div style="display: flex; gap: 8px; margin-top: 8px;">
+                <button type="button" id="takeEnrollSnapshotBtn" class="webcam-btn" style="flex: 1;">Capturar Rostro</button>
+                <button type="button" id="retakeEnrollSnapshotBtn" class="webcam-btn ghost" style="display:none;">Reintentar</button>
+              </div>
+            </div>
+
+            <!-- Previsualización Archivo -->
+            <div id="fileSourceBox" style="display: none; margin-bottom: 12px;">
+              <input type="file" id="enrollFileInput" accept="image/*" class="premium-input">
+            </div>
+
+            <button type="submit" id="saveEnrollBtn" class="webcam-btn" style="width: 100%; background: linear-gradient(135deg, var(--accent-teal), #059669); margin-top: 10px;">
+              Guardar Enrolamiento
+            </button>
+            <div id="enrollMessage" style="margin-top: 10px; font-size: 0.85rem; text-align: center;"></div>
+          </form>
+        </div>
+
+        <!-- Lista de Personas Enroladas -->
+        <div style="background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; border: 1px solid var(--bg-card-border); display: flex; flex-direction: column;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h3 style="font-size: 1rem; color: var(--accent-cyan);">Personal Registrado</h3>
+            <button id="refreshPersonsBtn" class="filter-action-btn">Actualizar</button>
+          </div>
+          <div id="enrolledPersonsList" style="flex: 1; max-height: 400px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
+            <!-- Renderizado dinámico desde JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Historial de Capturas -->
+  <div id="logsModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content" style="max-width: 900px; width: 95%; max-height: 90vh; overflow-y: auto; padding: 25px;">
+      <span class="modal-close" id="closeLogsModalBtn">&times;</span>
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--bg-card-border); padding-bottom: 10px; margin-bottom: 15px;">
+        <h2 style="font-size: 1.3rem; color: #fff;">Historial de Detecciones e Identificaciones</h2>
+        <div style="display: flex; gap: 10px;">
+          <button id="refreshLogsBtn" class="webcam-btn ghost">Actualizar</button>
+          <button id="clearLogsBtn" class="webcam-btn" style="background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.4); color: #f87171;">Vaciar Historial</button>
+        </div>
+      </div>
+
+      <div id="logsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; max-height: 550px; overflow-y: auto; padding-right: 5px;">
+        <!-- Renderizado dinámico de tarjetas desde JS -->
+      </div>
+    </div>
+  </div>
+
   <!-- Modal Acerca De -->
   <div id="aboutModal" class="modal-overlay" style="display: none;">
     <div class="modal-content" style="max-width: 800px; width: 90%; max-height: 85vh; overflow-y: auto; text-align: left; padding: 25px;">
@@ -159,7 +264,7 @@
       
       <div class="about-section" style="display: flex; flex-direction: column; gap: 20px; color: var(--text-main);">
         <div>
-          <h3 style="color: var(--accent-cyan); font-size: 1.1rem; margin-bottom: 8px;">🚀 Ciclo de Funcionamiento del Sistema</h3>
+          <h3 style="color: var(--accent-cyan); font-size: 1.1rem; margin-bottom: 8px;">Ciclo de Funcionamiento del Sistema</h3>
           <p style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.5; margin-bottom: 10px;">
             El flujo de procesamiento en tiempo real se ejecuta bajo el siguiente ciclo lógico:
           </p>
@@ -173,7 +278,7 @@
         </div>
 
         <div>
-          <h3 style="color: var(--accent-cyan); font-size: 1.1rem; margin-bottom: 8px;">⚙️ Tecnologías Utilizadas</h3>
+          <h3 style="color: var(--accent-cyan); font-size: 1.1rem; margin-bottom: 8px;">Tecnologías Utilizadas</h3>
           <p style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.5;">
             Desarrollado sobre un ecosistema de alto rendimiento 100% offline:
           </p>
@@ -186,7 +291,7 @@
         </div>
 
         <div>
-          <h3 style="color: var(--accent-cyan); font-size: 1.1rem; margin-bottom: 8px;">🖥️ Funcionalidades Clave</h3>
+          <h3 style="color: var(--accent-cyan); font-size: 1.1rem; margin-bottom: 8px;">Funcionalidades Clave</h3>
           <ul style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; padding-left: 20px; display: flex; flex-direction: column; gap: 5px;">
             <li><strong>Modo Encuadre:</strong> Recorta la imagen centrándose exclusivamente en el sujeto objetivo y ajustando el margen suavemente en tiempo real.</li>
             <li><strong>Vista Completa (Overlay):</strong> Muestra toda la amplitud de la cámara dibujando recuadros, etiquetas e IDs sobre todos los objetos detectados sin realizar recortes.</li>
@@ -199,6 +304,6 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=2.0.0"></script>
+  <script src="/static/js/app.js?v=2.2.0"></script>
 </body>
 </html>
