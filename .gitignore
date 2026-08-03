@@ -39,3 +39,4 @@ data/*
 
 # Directorios de entrenamiento y temporales
 runs/
+*.db
