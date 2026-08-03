@@ -84,9 +84,17 @@ class AutoFramingEngine:
         if not tracked_objects:
             return None
 
+        # Filtrar por clases permitidas globalmente
+        allowed_classes = settings.TARGET_CLASSES
+        if allowed_classes is not None and len(allowed_classes) > 0 and allowed_classes[0] == -1:
+            allowed_classes = None
+
         # Si hay un ID objetivo especificado manualmente, buscarlo
         if self.target_id is not None:
             for obj in tracked_objects:
+                cls_id = obj.get("class_id")
+                if allowed_classes is not None and cls_id not in allowed_classes:
+                    continue
                 if obj.get("track_id") == self.target_id:
                     return obj
 
@@ -98,6 +106,10 @@ class AutoFramingEngine:
         best_score = -float('inf')
 
         for obj in tracked_objects:
+            cls_id = obj.get("class_id")
+            if allowed_classes is not None and cls_id not in allowed_classes:
+                continue
+
             bbox = obj.get("bbox", [])
             if len(bbox) != 4:
                 continue

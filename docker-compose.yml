@@ -14,6 +14,8 @@ services:
       - OPENVINO_DEVICE=CPU
       - MODEL_NAME=yolov8n
       - LOG_LEVEL=INFO
+      - VIDEO_SOURCE=SYNTHETIC,SYNTHETIC
+      - CENTRAL_SERVER_URL=http://central_server:8082
     # Mapeo de dispositivos de GPU Intel (opcional para aceleración iGPU UHD 630 en Linux/WSL2)
     # devices:
     #   - "/dev/dri:/dev/dri"
@@ -36,3 +38,16 @@ services:
     depends_on:
       - app
     restart: unless-stopped
+
+  central_server:
+    build:
+      context: ./central_server
+      dockerfile: Dockerfile
+    container_name: central_server
+    ports:
+      - "8082:8082"
+      - "8502:8502"
+    volumes:
+      - ./central_server:/app
+    restart: unless-stopped
+

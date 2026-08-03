@@ -1,4 +1,15 @@
 document.addEventListener('DOMContentLoaded', () => {
+  const API_KEY = "super_secret_edge_key_2026";
+  function escapeHTML(str) {
+    if (!str) return '';
+    return str.toString()
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   const videoFeed = document.getElementById('videoFeed');
   const modeBtns = document.querySelectorAll('.mode-btn');
 
@@ -14,6 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const activeModelSelect = document.getElementById('activeModelSelect');
   const dynamicFiltersContainer = document.getElementById('dynamicFiltersContainer');
   const selectAllFiltersBtn = document.getElementById('selectAllFiltersBtn');
+  const onlyPersonFilterBtn = document.getElementById('onlyPersonFilterBtn');
   const clearAllFiltersBtn = document.getElementById('clearAllFiltersBtn');
   const maxFpsSelect = document.getElementById('maxFpsSelect');
 
@@ -70,7 +82,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!modelData) return;
 
     currentModelClasses = modelData.classes;
-    activeClassIds = new Set(Object.keys(currentModelClasses).map(Number));
+    // Por defecto activamos ÚNICAMENTE la clase Persona (0) para evitar falsos positivos con otros objetos
+    activeClassIds = new Set([0]);
     
     renderFilters();
     postSettings();
@@ -110,6 +123,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (activeModelSelect) {
     activeModelSelect.addEventListener('change', handleModelChange);
+  }
+
+  if (onlyPersonFilterBtn) {
+    onlyPersonFilterBtn.addEventListener('click', () => {
+      activeClassIds = new Set([0]);
+      renderFilters();
+      postSettings();
+    });
   }
 
   if (selectAllFiltersBtn) {
@@ -283,7 +304,7 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       await fetch('/api/settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
         body: JSON.stringify(payload)
       });
     } catch (err) {
@@ -488,7 +509,7 @@ document.addEventListener('DOMContentLoaded', () => {
           const payload = { name, dni, role, image_b64: enrollCapturedB64 };
           res = await fetch('/api/faces/enroll_b64', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
             body: JSON.stringify(payload)
           });
         } else {
@@ -502,6 +523,7 @@ document.addEventListener('DOMContentLoaded', () => {
           formData.append('file', file);
           res = await fetch(`/api/faces/enroll?name=${encodeURIComponent(name)}&dni=${encodeURIComponent(dni)}&role=${encodeURIComponent(role)}`, {
             method: 'POST',
+            headers: { 'X-API-Key': API_KEY },
             body: formData
           });
         }
@@ -542,8 +564,8 @@ document.addEventListener('DOMContentLoaded', () => {
       enrolledPersonsList.innerHTML = persons.map(p => `
         <div style="background: rgba(255,255,255,0.05); border: 1px solid var(--bg-card-border); padding: 10px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center;">
           <div>
-            <div style="font-weight: 600; font-size: 0.9rem; color: #fff;">${p.name}</div>
-            <div style="font-size: 0.75rem; color: var(--text-muted);">DNI: ${p.dni} | Rol: ${p.role}</div>
+            <div style="font-weight: 600; font-size: 0.9rem; color: #fff;">${escapeHTML(p.name)}</div>
+            <div style="font-size: 0.75rem; color: var(--text-muted);">DNI: ${escapeHTML(p.dni)} | Rol: ${escapeHTML(p.role)}</div>
           </div>
           <button onclick="deletePerson(${p.id})" class="filter-action-btn danger" style="padding: 4px 8px;">Eliminar</button>
         </div>
@@ -556,7 +578,7 @@ document.addEventListener('DOMContentLoaded', () => {
   window.deletePerson = async function(id) {
     if (!confirm('¿Seguro que deseas eliminar a esta persona?')) return;
     try {
-      const res = await fetch(`/api/faces/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/faces/${id}`, { method: 'DELETE', headers: { 'X-API-Key': API_KEY } });
       if (res.ok) {
         loadEnrolledPersons();
       }

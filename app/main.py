@@ -38,12 +38,12 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Configuración de CORS
+# Configuración de CORS Segura
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_credentials=False,  # Mitigación de riesgo: Evita robo de sesión
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 

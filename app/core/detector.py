@@ -97,11 +97,19 @@ class OpenVINODetector:
             return self._synthetic_tracking(frame)
 
         frame_skip = getattr(settings, "FRAME_SKIP", 1)
+        classes_filter = classes if classes is not None else settings.TARGET_CLASSES
+        if classes_filter is not None and len(classes_filter) > 0 and classes_filter[0] == -1:
+            classes_filter = None
         
         if self.frame_counter % frame_skip != 0:
             # Linear Extrapolation (Frame Skipped) - O(1) update
             tracked_objects = []
+            valid_active_trackers = {}
             for track_id, t_info in self.active_trackers.items():
+                cls_id = t_info.get("class_id")
+                if classes_filter is not None and cls_id not in classes_filter:
+                    continue
+
                 # Extrapolate position using velocity
                 t_info["bbox"][0] += t_info["vx"]
                 t_info["bbox"][1] += t_info["vy"]
@@ -110,17 +118,18 @@ class OpenVINODetector:
                 
                 tracked_objects.append({
                     "track_id": track_id,
-                    "class_id": t_info["class_id"],
+                    "class_id": cls_id,
                     "class_name": t_info["class_name"],
                     "confidence": t_info["confidence"],
                     "bbox": [round(c, 1) for c in t_info["bbox"]]
                 })
+                valid_active_trackers[track_id] = t_info
+
+            self.active_trackers = valid_active_trackers
             self.frame_counter += 1
             return tracked_objects
 
         try:
-            classes_filter = classes if classes is not None else settings.TARGET_CLASSES
-            
             # Ejecutar inferencia con el rastreador de Ultralytics (ByteTrack)
             results = self.model.track(
                 source=frame,
@@ -139,13 +148,16 @@ class OpenVINODetector:
                 boxes = results[0].boxes
                 if boxes is not None and len(boxes) > 0:
                     for box in boxes:
+                        cls_id = int(box.cls[0].item()) if box.cls is not None else 0
+                        # Filtrado estricto post-inferencia por seguridad
+                        if classes_filter is not None and cls_id not in classes_filter:
+                            continue
+
                         # Extraer Bounding Box [x1, y1, x2, y2]
                         xyxy = box.xyxy[0].cpu().numpy().tolist()
                         
                         # Extraer ID de tracking (ByteTrack)
                         track_id = int(box.id[0].item()) if box.id is not None else None
-                        
-                        cls_id = int(box.cls[0].item()) if box.cls is not None else 0
                         cls_name = self.model.names.get(cls_id, f"class_{cls_id}") if hasattr(self.model, "names") else "object"
                         confidence = float(box.conf[0].item()) if box.conf is not None else 0.0
 
