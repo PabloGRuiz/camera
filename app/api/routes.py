@@ -207,14 +207,21 @@ async def clear_all_logs():
     last_logged_times.clear()
     return {"status": "success"}
 
-def send_to_central_server(payload: dict):
-    try:
-        url = f"{CENTRAL_SERVER_URL}/api/report_log"
-        httpx.post(url, json=payload, timeout=5.0)
-    except Exception as e:
-        logger.error(f"Error sending log to central server: {e}")
+import threading
 
-def _log_person_capture(camera_id: str, t_id: int, frame: np.ndarray, bbox: List[float], match_info: dict, background_tasks: BackgroundTasks):
+def send_to_central_server_async(payload: dict):
+    def _worker():
+        try:
+            url = f"{CENTRAL_SERVER_URL}/api/report_log"
+            res = httpx.post(url, json=payload, timeout=5.0)
+            logger.info(f"Reporte enviado al servidor central: {res.status_code}")
+        except Exception as e:
+            logger.error(f"Error enviando log al servidor central: {e}")
+
+    thread = threading.Thread(target=_worker, daemon=True)
+    thread.start()
+
+def _log_person_capture(camera_id: str, t_id: int, frame: np.ndarray, bbox: List[float], match_info: dict):
     now = time.time()
     name = match_info.get("name", "Desconocido")
     status_role = match_info.get("role", "No Registrado")
@@ -253,20 +260,17 @@ def _log_person_capture(camera_id: str, t_id: int, frame: np.ndarray, bbox: List
         }
         event_logs.appendleft(log_entry)
         
-        # Send lightweight text log to central server (Edge Computing compliant: no image payload)
-        background_tasks.add_task(
-            send_to_central_server,
-            {
-                "camera_id": camera_id,
-                "person_name": name,
-                "role": status_role,
-                "event_type": "Persona"
-            }
-        )
+        # Send lightweight text log to central server via daemon thread
+        send_to_central_server_async({
+            "camera_id": camera_id,
+            "person_name": name,
+            "role": status_role,
+            "event_type": "Persona"
+        })
     except Exception as e:
         logger.error(f"Error generando captura: {e}")
 
-def _log_vehicle_capture(camera_id: str, t_id: int, frame: np.ndarray, bbox: List[float], vehicle_type: str, background_tasks: BackgroundTasks):
+def _log_vehicle_capture(camera_id: str, t_id: int, frame: np.ndarray, bbox: List[float], vehicle_type: str):
     now = time.time()
     vehicle_type_clean = vehicle_type.replace("_", " ").title()
     
@@ -303,16 +307,13 @@ def _log_vehicle_capture(camera_id: str, t_id: int, frame: np.ndarray, bbox: Lis
         }
         event_logs.appendleft(log_entry)
         
-        # Send lightweight text log to central server
-        background_tasks.add_task(
-            send_to_central_server,
-            {
-                "camera_id": camera_id,
-                "person_name": f"Vehículo: {vehicle_type_clean}",
-                "role": "Entrada Vehicular",
-                "event_type": "Vehículo"
-            }
-        )
+        # Send lightweight text log to central server via daemon thread
+        send_to_central_server_async({
+            "camera_id": camera_id,
+            "person_name": f"Vehículo: {vehicle_type_clean}",
+            "role": "Entrada Vehicular",
+            "event_type": "Vehículo"
+        })
     except Exception as e:
         logger.error(f"Error generando captura de vehículo: {e}")
 
@@ -367,13 +368,13 @@ def generate_mjpeg_stream(camera_id: str, mode: str, background_tasks: Backgroun
                             
                             match_info = face_recognition_cache.get(cache_key) or {"name": "Desconocido", "role": "No Registrado"}
                             obj["face_identity"] = match_info
-                            _log_person_capture(camera_id, t_id, frame, obj["bbox"], match_info, background_tasks)
+                            _log_person_capture(camera_id, t_id, frame, obj["bbox"], match_info)
 
                     # Vehículos (Autos, Camiones, Tanques, Motos, etc.)
                     vehicle_keywords = ["car", "auto", "vehiculo", "vehicle", "truck", "camion", "bus", "colectivo", "motorcycle", "moto", "tank", "tanque", "object"]
                     if c_id in [1, 2, 3, 4, 5, 7, 8, 10] or any(v in c_name for v in vehicle_keywords):
                         if t_id is not None and not any(p in c_name for p in ["person", "soldier", "soldado", "civil"]):
-                            _log_vehicle_capture(camera_id, t_id, frame, obj["bbox"], c_name, background_tasks)
+                            _log_vehicle_capture(camera_id, t_id, frame, obj["bbox"], c_name)
                     
                     if settings.ENABLE_SYMBOL_RECOGNITION:
                         t_id = obj.get("track_id")
