@@ -51,3 +51,14 @@ services:
       - ./central_server:/app
     restart: unless-stopped
 
+  simulator:
+    build:
+      context: ./central_server
+      dockerfile: Dockerfile
+    container_name: simulator_edge_nodes
+    command: ["python", "/workspace/scripts/simulate_edge_nodes.py", "--url", "http://central_server:8082", "--nodes", "4"]
+    volumes:
+      - ./scripts:/workspace/scripts
+    profiles:
+      - demo
+
