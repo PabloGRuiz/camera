@@ -109,6 +109,31 @@ class OpenVINOFaceRecognizer:
 
         return feature_vector.flatten()
 
+    def enroll_multi_angle(self, frames: List[np.ndarray], name: str, dni: str, role: str) -> Tuple[bool, str]:
+        """
+        Registra a una persona utilizando la fusión de múltiples ángulos/fotogramas (Estilo Face ID).
+        Calcula el vector biométrico promedio ponderado y normalizado para máxima precisión.
+        """
+        valid_embeddings = []
+        for frame in frames:
+            emb = self.extract_embedding(frame)
+            if emb is not None:
+                valid_embeddings.append(emb)
+
+        if not valid_embeddings:
+            return False, "No se pudo detectar un rostro claro en los ángulos capturados."
+
+        # Fusión y normalización L2 del vector multirrostro
+        avg_embedding = np.mean(valid_embeddings, axis=0)
+        norm = np.linalg.norm(avg_embedding)
+        if norm > 0:
+            avg_embedding = avg_embedding / norm
+
+        success = face_db.register_person(name, dni, role, avg_embedding)
+        if success:
+            return True, f"Enrolamiento 3D Face ID exitoso ({len(valid_embeddings)} de {len(frames)} ángulos procesados)."
+        return False, "Error al guardar en la base de datos biométrica."
+
     def recognize_face_in_bbox(self, frame: np.ndarray, bbox: List[int], threshold: float = 0.50) -> Optional[Dict[str, Any]]:
         """
         Extrae el rostro en la región de la persona y lo compara con la Base de Datos.

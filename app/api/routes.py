@@ -524,6 +524,40 @@ class EnrollB64Model(BaseModel):
     role: Optional[str] = Field("Usuario", max_length=50)
     image_b64: str = Field(..., max_length=5000000)
 
+class EnrollMultiB64Model(BaseModel):
+    name: str = Field(..., max_length=50)
+    dni: str = Field(..., max_length=20)
+    role: Optional[str] = Field("Usuario", max_length=50)
+    images_b64: List[str] = Field(..., max_items=10)
+
+@router.post("/api/faces/enroll_multi", dependencies=[Depends(verify_api_key)])
+async def enroll_face_multi_b64(payload: EnrollMultiB64Model):
+    try:
+        frames = []
+        for b64_item in payload.images_b64:
+            if "," in b64_item:
+                b64_item = b64_item.split(",")[1]
+            img_bytes = base64.b64decode(b64_item)
+            nparr = np.frombuffer(img_bytes, np.uint8)
+            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            if frame is not None:
+                frames.append(frame)
+
+        if not frames:
+            raise HTTPException(status_code=400, detail="Imágenes Base64 no válidas")
+
+        success, msg = face_recognizer.enroll_multi_angle(frames, name=payload.name, dni=payload.dni, role=payload.role)
+        if not success:
+            raise HTTPException(status_code=422, detail=msg)
+
+        face_recognition_cache.clear()
+        return {"status": "success", "message": msg}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error en enrolamiento multirrostro Face ID: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/api/faces/enroll_b64", dependencies=[Depends(verify_api_key)])
 async def enroll_face_b64(payload: EnrollB64Model):
     try:

@@ -521,6 +521,114 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Lógica de Escaneo Biométrico Face ID (Multirrostro 3D)
+  const startFaceIdScanBtn = document.getElementById('startFaceIdScanBtn');
+  const faceIdRingOverlay = document.getElementById('faceIdRingOverlay');
+  const faceIdPrompt = document.getElementById('faceIdPrompt');
+  const faceIdProgressBox = document.getElementById('faceIdProgressBox');
+  const faceIdStepLabel = document.getElementById('faceIdStepLabel');
+  const faceIdPercent = document.getElementById('faceIdPercent');
+  const faceIdProgressBar = document.getElementById('faceIdProgressBar');
+
+  if (startFaceIdScanBtn) {
+    startFaceIdScanBtn.addEventListener('click', async () => {
+      if (!enrollWebcamVideo || !enrollWebcamStream) {
+        alert('Activa primero la cámara web para iniciar el escaneo 3D.');
+        return;
+      }
+      
+      const name = enrollName.value.trim();
+      const dni = enrollDni.value.trim();
+      if (!name || !dni) {
+        alert('Por favor ingresa el Nombre Completo y DNI antes de iniciar el escaneo Face ID.');
+        return;
+      }
+
+      startFaceIdScanBtn.disabled = true;
+      if (faceIdProgressBox) faceIdProgressBox.style.display = 'block';
+      let scannedImages = [];
+
+      const steps = [
+        { label: 'Paso 1/3: Mira de Frente 🎯', prompt: 'MIRA DE FRENTE', percent: '33%', ringColor: '#10b981' },
+        { label: 'Paso 2/3: Gira levemente a la Izquierda ⬅️', prompt: 'GIRA A LA IZQUIERDA', percent: '66%', ringColor: '#3b82f6' },
+        { label: 'Paso 3/3: Gira levemente a la Derecha ➡️', prompt: 'GIRA A LA DERECHA', percent: '100%', ringColor: '#8b5cf6' }
+      ];
+
+      function captureFrame() {
+        const vw = enrollWebcamVideo.videoWidth || 640;
+        const vh = enrollWebcamVideo.videoHeight || 480;
+        enrollCanvas.width = vw;
+        enrollCanvas.height = vh;
+        const ctx = enrollCanvas.getContext('2d');
+        ctx.drawImage(enrollWebcamVideo, 0, 0, vw, vh);
+        return enrollCanvas.toDataURL('image/jpeg', 0.9);
+      }
+
+      try {
+        for (let i = 0; i < steps.length; i++) {
+          const step = steps[i];
+          if (faceIdStepLabel) faceIdStepLabel.textContent = step.label;
+          if (faceIdPrompt) faceIdPrompt.textContent = step.prompt;
+          if (faceIdPercent) faceIdPercent.textContent = step.percent;
+          if (faceIdProgressBar) faceIdProgressBar.style.width = step.percent;
+          if (faceIdRingOverlay) {
+            faceIdRingOverlay.style.borderColor = step.ringColor;
+            faceIdRingOverlay.style.transform = 'scale(1.08)';
+            setTimeout(() => { if (faceIdRingOverlay) faceIdRingOverlay.style.transform = 'scale(1.0)'; }, 250);
+          }
+
+          await new Promise(r => setTimeout(r, 1200));
+          const frameB64 = captureFrame();
+          scannedImages.push(frameB64);
+        }
+
+        if (enrollMessage) {
+          enrollMessage.innerHTML = '⚡ Procesando fusión biométrica 3D Face ID...';
+          enrollMessage.style.color = 'var(--accent-cyan)';
+        }
+
+        const payload = {
+          name: name,
+          dni: dni,
+          role: enrollRole.value,
+          images_b64: scannedImages
+        };
+
+        const res = await fetch('/api/faces/enroll_multi', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          if (enrollMessage) {
+            enrollMessage.innerHTML = `✅ ${data.message}`;
+            enrollMessage.style.color = '#10b981';
+          }
+          loadEnrolledPersons();
+        } else {
+          if (enrollMessage) {
+            enrollMessage.innerHTML = `❌ ${data.detail || 'Error en escaneo'}`;
+            enrollMessage.style.color = '#f87171';
+          }
+        }
+      } catch (err) {
+        if (enrollMessage) {
+          enrollMessage.innerHTML = `❌ Error de red: ${err.message}`;
+          enrollMessage.style.color = '#f87171';
+        }
+      } finally {
+        startFaceIdScanBtn.disabled = false;
+        setTimeout(() => {
+          if (faceIdProgressBox) faceIdProgressBox.style.display = 'none';
+          if (faceIdPrompt) faceIdPrompt.textContent = 'Centra tu Rostro';
+          if (faceIdRingOverlay) faceIdRingOverlay.style.borderColor = '#10b981';
+        }, 3000);
+      }
+    });
+  }
+
   if (enrollForm) {
     enrollForm.addEventListener('submit', async (e) => {
       e.preventDefault();
