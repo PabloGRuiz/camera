@@ -20,7 +20,7 @@ class CameraManager:
     def add_camera(self, camera_id: str, source: str):
         if camera_id not in self.cameras:
             logger.info(f"Adding camera {camera_id} (source: {source})")
-            reader = VideoStreamReader(source=source, target_fps=settings.MAX_FPS)
+            reader = VideoStreamReader(source=source, target_fps=settings.MAX_FPS, name=camera_id)
             reader.start()
             self.cameras[camera_id] = reader
             self.framing_engines[camera_id] = AutoFramingEngine()

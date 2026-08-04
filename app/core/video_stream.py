@@ -13,10 +13,11 @@ class SyntheticVideoGenerator:
     Generador de video sintético en tiempo real con sujetos en movimiento.
     Permite probar todo el pipeline de auto-framing sin depender de cámaras o archivos externos.
     """
-    def __init__(self, width: int = 1280, height: int = 720, fps: int = 30):
+    def __init__(self, width: int = 1280, height: int = 720, fps: int = 30, name: str = "SYNTHETIC"):
         self.width = width
         self.height = height
         self.fps = fps
+        self.name = name
         self.frame_count = 0
 
     def generate_frame(self) -> np.ndarray:
@@ -55,8 +56,8 @@ class SyntheticVideoGenerator:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
         # Información de overlay en el video fuente
-        cv2.putText(frame, f"SYNTHETIC VIDEO STREAM | Frame: {self.frame_count}", (20, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 180), 2)
+        cv2.putText(frame, f"FUENTE: {self.name} (Sintética) | Frame: {self.frame_count}", (20, 40),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 180), 2)
 
         return frame
 
@@ -66,9 +67,10 @@ class VideoStreamReader:
     Lector de flujo de video multihilo (Threaded Video Capture).
     Garantiza una lectura continua sin bloqueo del pipeline principal.
     """
-    def __init__(self, source: Union[str, int] = "SYNTHETIC", target_fps: int = 30):
+    def __init__(self, source: Union[str, int] = "SYNTHETIC", target_fps: int = 30, name: str = "SYNTHETIC"):
         self.source = source
         self.target_fps = target_fps
+        self.name = name
         self.stopped = False
         self.lock = threading.Lock()
         self.current_frame = None
@@ -83,9 +85,9 @@ class VideoStreamReader:
         
         # Evaluar si la fuente es sintética, número de webcam o archivo/stream
         if source_str.upper() in ["SYNTHETIC", "DEMO", "MOCK"]:
-            logger.info("Iniciando VideoStreamReader en modo SYNTHETIC GENERATOR.")
+            logger.info(f"Iniciando VideoStreamReader [{self.name}] en modo SYNTHETIC GENERATOR.")
             self.is_synthetic = True
-            self.synthetic_gen = SyntheticVideoGenerator(fps=self.target_fps)
+            self.synthetic_gen = SyntheticVideoGenerator(fps=self.target_fps, name=self.name)
             self.current_frame = self.synthetic_gen.generate_frame()
         else:
             try:
@@ -101,7 +103,7 @@ class VideoStreamReader:
                 if not self.cap.isOpened():
                     logger.warning(f"No se pudo abrir la fuente: {src_val}. Recurriendo a modo SYNTHETIC.")
                     self.is_synthetic = True
-                    self.synthetic_gen = SyntheticVideoGenerator(fps=self.target_fps)
+                    self.synthetic_gen = SyntheticVideoGenerator(fps=self.target_fps, name=self.name)
                     self.current_frame = self.synthetic_gen.generate_frame()
                 else:
                     ret, frame = self.cap.read()
@@ -110,12 +112,12 @@ class VideoStreamReader:
                     else:
                         logger.warning("No se pudo leer el primer frame. Recurriendo a SYNTHETIC.")
                         self.is_synthetic = True
-                        self.synthetic_gen = SyntheticVideoGenerator(fps=self.target_fps)
+                        self.synthetic_gen = SyntheticVideoGenerator(fps=self.target_fps, name=self.name)
                         self.current_frame = self.synthetic_gen.generate_frame()
             except Exception as e:
                 logger.error(f"Error abriendo la fuente de video {self.source}: {e}. Usando modo SYNTHETIC.")
                 self.is_synthetic = True
-                self.synthetic_gen = SyntheticVideoGenerator(fps=self.target_fps)
+                self.synthetic_gen = SyntheticVideoGenerator(fps=self.target_fps, name=self.name)
                 self.current_frame = self.synthetic_gen.generate_frame()
 
     def start(self):
