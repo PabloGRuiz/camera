@@ -90,6 +90,22 @@ ema_alpha = st.sidebar.slider("Factor de Suavizado EMA (α)", min_value=0.01, ma
 padding = st.sidebar.slider("Padding / Margen (%)", min_value=0, max_value=60, value=20, step=5)
 aspect_ratio = st.sidebar.selectbox("Relación de Aspecto Target", ["16:9", "9:16", "1:1", "FREE"], index=0)
 target_id = st.sidebar.number_input("ID de Objeto Objetivo (-1 = Auto)", value=-1, step=1)
+
+# Filtro de Clases (Integrado en Streamlit)
+st.sidebar.markdown("---")
+st.sidebar.subheader("Filtro de Detección (Clases)")
+class_options = {
+    "Persona": 0, "Vehículo/Auto": 2, "Moto": 3, "Camión": 7,
+    "TV": 62, "Laptop": 63, "Teléfono": 67, "Silla": 56
+}
+selected_classes_names = st.sidebar.multiselect(
+    "Filtrar por Clase (Vacío = Detectar Todo)", 
+    list(class_options.keys()), 
+    default=["Persona"]
+)
+target_classes_ids = [class_options[name] for name in selected_classes_names] if selected_classes_names else [-1]
+
+st.sidebar.markdown("---")
 draw_overlays = st.sidebar.checkbox("Mostrar Overlays en Vista Previa", value=True)
 mode = st.sidebar.radio("Modo de Transmisión", ["framed", "annotated", "dual"], index=0)
 
@@ -101,6 +117,7 @@ if st.sidebar.button("Aplicar Cambios en Vivo") and selected_view_cam:
             "aspect_ratio": aspect_ratio,
             "target_id": int(target_id),
             "draw_overlays": draw_overlays,
+            "target_classes": target_classes_ids,
             "camera_id": selected_view_cam
         }
         res = requests.post(f"{FASTAPI_URL}/api/settings", json=payload, headers=HEADERS, timeout=2)
@@ -154,7 +171,7 @@ with tab_enrolamiento:
     col_form, col_list = st.columns([1, 1])
 
     with col_form:
-        capture_method = st.radio("Método de captura", ["Cámara Web", "Subir Foto local"], horizontal=True, key="radio_enroll_method")
+        capture_method = st.radio("Método de captura", ["Cámara Web (Rápido)", "Subir Foto local", "Face ID 3D (Multirrostro)"], horizontal=True, key="radio_enroll_method")
         
         with st.form("enroll_form", clear_on_submit=True):
             e_name = st.text_input("Nombre Completo *")
@@ -165,21 +182,25 @@ with tab_enrolamiento:
             e_camera = None
             if capture_method == "Subir Foto local":
                 e_file = st.file_uploader("Selecciona una foto clara del rostro", type=["jpg", "jpeg", "png"])
-            else:
+                submitted = st.form_submit_button("Registrar Persona")
+            elif capture_method == "Cámara Web (Rápido)":
                 e_camera = st.camera_input("Tómate una foto de frente")
-
-            submitted = st.form_submit_button("Registrar Persona")
+                submitted = st.form_submit_button("Registrar Persona")
+            else:
+                st.info("💡 **El Enrolamiento Face ID 3D (Multirrostro)** requiere acceso continuo a tu cámara para capturar 3 ángulos (Frente, Izquierda, Derecha).")
+                st.markdown(f"👉 **[ABRIR PANEL WEB PRINCIPAL]({PUBLIC_FASTAPI_URL})** para utilizar el anillo biométrico avanzado.")
+                submitted = st.form_submit_button("Registrar Persona", disabled=True)
 
         if submitted:
             if not e_name or not e_dni:
                 st.error("El nombre y DNI son obligatorios.")
-            elif capture_method == "Cámara Web" and e_camera is None:
+            elif capture_method == "Cámara Web (Rápido)" and e_camera is None:
                 st.error("Por favor, tómate una foto con la cámara.")
             elif capture_method == "Subir Foto local" and e_file is None:
                 st.error("Por favor, selecciona un archivo de imagen.")
             else:
                 try:
-                    if capture_method == "Cámara Web" and e_camera is not None:
+                    if capture_method == "Cámara Web (Rápido)" and e_camera is not None:
                         bytes_data = e_camera.getvalue()
                         b64_data = base64.b64encode(bytes_data).decode()
                         payload = {"name": e_name, "dni": e_dni, "role": e_role, "image_b64": b64_data}
