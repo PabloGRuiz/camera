@@ -13,6 +13,8 @@ st.title("Sistema de Seguimiento y Detección de Objetivos")
 st.markdown("Control de parámetros en tiempo real con inferencia optimizada por **Intel OpenVINO** y soporte multi-cámara.")
 
 FASTAPI_URL = os.getenv("FASTAPI_URL", "http://localhost:8081")
+API_KEY = os.getenv("API_KEY", "super_secret_edge_key_2026")
+HEADERS = {"X-API-Key": API_KEY, "Content-Type": "application/json"}
 
 # Sidebar de Controles
 st.sidebar.header("Gestión de Cámaras")
@@ -42,18 +44,17 @@ try:
 
         st.sidebar.markdown("---")
         with st.sidebar.expander("➕ Añadir / Nombrar Cámara", expanded=False):
-            new_cam_id = st.text_input("Nombre / Alias de Cámara", value="Camara_Extra")
-            source_type = st.selectbox("Origen de Video", ["Cámara Web Local", "URL RTSP / IP", "Archivo MP4 Local"])
+            new_cam_id = st.text_input("Nombre / Alias de la Cámara (Entidad)", value="Camara_Frontal", help="Nombre único para identificar esta cámara en el sistema")
+            source_type = st.selectbox("Origen de Video", ["Cámara Web Local (USB/Integrada)", "URL RTSP / IP", "Archivo MP4 Local"])
             
-            if source_type == "Cámara Web Local":
-                cam_index = st.number_input("Índice de Cámara (0=Frontal, 1=Webcam, etc.)", min_value=0, max_value=10, value=0, step=1)
-                default_src = str(cam_index)
+            if source_type == "Cámara Web Local (USB/Integrada)":
+                cam_index = st.number_input("Número / Índice de Cámara (0 = Integrada, 1 = USB externa...)", min_value=0, max_value=10, value=0, step=1)
+                new_cam_source = str(cam_index)
+                st.caption(f"Se asignará la cámara física de la PC con índice `{cam_index}`.")
             elif source_type == "URL RTSP / IP":
-                default_src = "rtsp://admin:123456@192.168.1.100:554/stream1"
+                new_cam_source = st.text_input("URL RTSP de la Cámara IP", value="rtsp://admin:123456@192.168.1.100:554/stream1")
             else:
-                default_src = "videos/sample.mp4"
-
-            new_cam_source = st.text_input("Ruta / URL del Origen", value=default_src)
+                new_cam_source = st.text_input("Ruta del Archivo de Video MP4", value="videos/sample.mp4")
 
             if st.button("Conectar Nueva Cámara"):
                 if new_cam_id and new_cam_source:
@@ -61,7 +62,7 @@ try:
                         payload = {"action": "add", "camera_id": new_cam_id, "source": new_cam_source}
                         r = requests.post(f"{FASTAPI_URL}/api/camera/control", json=payload, headers=HEADERS, timeout=3)
                         if r.status_code == 200:
-                            st.sidebar.success(f"Cámara '{new_cam_id}' añadida con éxito.")
+                            st.sidebar.success(f"Cámara '{new_cam_id}' (Origen: {new_cam_source}) añadida con éxito.")
                             st.rerun()
                         else:
                             st.sidebar.error("Error al añadir cámara.")
