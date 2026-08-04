@@ -31,14 +31,53 @@ try:
             
             fixed_selection = st.sidebar.selectbox("Fijar Inferencia en Cámara (Opcional)", ["Ninguna"] + cameras, index=0 if not fixed_camera else cameras.index(fixed_camera) + 1)
             
-            if st.sidebar.button("Aplicar Configuración de Cámara"):
+            if st.sidebar.button("Aplicar Fijación de Cámara"):
                 fix_cam = None if fixed_selection == "Ninguna" else fixed_selection
-                requests.post(f"{FASTAPI_URL}/api/camera/control", json={"action": "fix", "camera_id": fix_cam}, timeout=2)
+                requests.post(f"{FASTAPI_URL}/api/camera/control", json={"action": "fix", "camera_id": fix_cam}, headers=HEADERS, timeout=2)
                 st.sidebar.success("Configuración aplicada")
                 st.rerun()
         else:
             selected_view_cam = None
             st.sidebar.warning("No hay cámaras conectadas.")
+
+        st.sidebar.markdown("---")
+        with st.sidebar.expander("➕ Añadir / Nombrar Cámara", expanded=False):
+            new_cam_id = st.text_input("Nombre / Alias de Cámara", value="Camara_Acceso_Sur")
+            source_type = st.selectbox("Origen de Video", ["Cámara Web Local (0)", "URL RTSP / IP", "Archivo MP4 Local"])
+            
+            if source_type == "Cámara Web Local (0)":
+                default_src = "0"
+            elif source_type == "URL RTSP / IP":
+                default_src = "rtsp://admin:123456@192.168.1.100:554/stream1"
+            else:
+                default_src = "videos/sample.mp4"
+
+            new_cam_source = st.text_input("Ruta / URL del Origen", value=default_src)
+
+            if st.button("Conectar Nueva Cámara"):
+                if new_cam_id and new_cam_source:
+                    try:
+                        payload = {"action": "add", "camera_id": new_cam_id, "source": new_cam_source}
+                        r = requests.post(f"{FASTAPI_URL}/api/camera/control", json=payload, headers=HEADERS, timeout=3)
+                        if r.status_code == 200:
+                            st.sidebar.success(f"Cámara '{new_cam_id}' añadida con éxito.")
+                            st.rerun()
+                        else:
+                            st.sidebar.error("Error al añadir cámara.")
+                    except Exception as ex:
+                        st.sidebar.error(f"Error: {ex}")
+
+        if cameras:
+            with st.sidebar.expander("🗑️ Eliminar Cámara", expanded=False):
+                cam_to_del = st.selectbox("Seleccionar para eliminar", cameras, key="sel_del_cam")
+                if st.button("Eliminar Cámara Seleccionada"):
+                    try:
+                        r = requests.post(f"{FASTAPI_URL}/api/camera/control", json={"action": "remove", "camera_id": cam_to_del}, headers=HEADERS, timeout=3)
+                        if r.status_code == 200:
+                            st.sidebar.success(f"Cámara '{cam_to_del}' eliminada.")
+                            st.rerun()
+                    except Exception as ex:
+                        st.sidebar.error(f"Error: {ex}")
     else:
         selected_view_cam = None
         st.sidebar.error("Error obteniendo cámaras.")
@@ -64,7 +103,7 @@ if st.sidebar.button("Aplicar Cambios en Vivo") and selected_view_cam:
             "draw_overlays": draw_overlays,
             "camera_id": selected_view_cam
         }
-        res = requests.post(f"{FASTAPI_URL}/api/settings", json=payload, timeout=2)
+        res = requests.post(f"{FASTAPI_URL}/api/settings", json=payload, headers=HEADERS, timeout=2)
         if res.status_code == 200:
             st.sidebar.success("Parámetros actualizados")
         else:
@@ -115,11 +154,12 @@ with tab_enrolamiento:
     col_form, col_list = st.columns([1, 1])
 
     with col_form:
+        capture_method = st.radio("Método de captura", ["Cámara Web", "Subir Foto local"], horizontal=True, key="radio_enroll_method")
+        
         with st.form("enroll_form", clear_on_submit=True):
             e_name = st.text_input("Nombre Completo *")
             e_dni = st.text_input("DNI o Identificador *")
             e_role = st.selectbox("Rol", ["Usuario", "Empleado", "VIP", "Seguridad", "Militar"])
-            capture_method = st.radio("Método de captura", ["Cámara Web", "Subir Foto local"], horizontal=True)
             
             e_file = None
             e_camera = None

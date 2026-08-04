@@ -151,6 +151,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
   loadModels();
 
+  const newCamIdInput = document.getElementById('newCamIdInput');
+  const newCamSourceInput = document.getElementById('newCamSourceInput');
+  const addCameraBtn = document.getElementById('addCameraBtn');
+
+  if (addCameraBtn) {
+    addCameraBtn.addEventListener('click', async () => {
+      const id = newCamIdInput ? newCamIdInput.value.trim() : '';
+      const source = newCamSourceInput ? newCamSourceInput.value.trim() : '0';
+
+      if (!id) {
+        alert('Por favor ingresa un nombre o alias para la cámara.');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/camera/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+          body: JSON.stringify({ action: 'add', source: source || '0', camera_id: id })
+        });
+        if (res.ok) {
+          alert(`Cámara '${id}' conectada exitosamente.`);
+          if (newCamIdInput) newCamIdInput.value = '';
+          if (newCamSourceInput) newCamSourceInput.value = '';
+          updateStreamUrl();
+        } else {
+          alert('Error al conectar la cámara.');
+        }
+      } catch (e) {
+        alert('Error de red: ' + e.message);
+      }
+    });
+  }
+
   function updateStreamUrl() {
     if (videoFeed) videoFeed.style.display = 'block';
     videoFeed.src = `/video_feed?mode=${currentMode}&t=${Date.now()}`;

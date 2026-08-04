@@ -94,7 +94,19 @@
         <!-- Switches generados por JS -->
       </div>
 
-      <div class="divider"></div>
+      <!-- Gestión de Cámaras -->
+      <details class="expert-settings" style="margin-bottom: 12px;">
+        <summary style="color: var(--accent-cyan); font-weight: 600;">📹 Gestión de Cámaras (Añadir / Nombrar)</summary>
+        <div class="expert-content" style="padding-top: 10px;">
+          <div class="control-group">
+            <label style="font-size: 0.75rem; color: var(--text-muted);">Nombre / Alias de la Cámara:</label>
+            <input type="text" id="newCamIdInput" placeholder="Ej: Camara_Acceso_Norte" style="width: 100%; padding: 6px; border-radius: 4px; background: rgba(0,0,0,0.3); border: 1px solid var(--bg-card-border); color: #fff; margin-bottom: 8px;">
+            <label style="font-size: 0.75rem; color: var(--text-muted);">Origen (ID '0', RTSP o MP4):</label>
+            <input type="text" id="newCamSourceInput" placeholder="0 o rtsp://192.168.1.100..." style="width: 100%; padding: 6px; border-radius: 4px; background: rgba(0,0,0,0.3); border: 1px solid var(--bg-card-border); color: #fff; margin-bottom: 10px;">
+            <button id="addCameraBtn" class="filter-action-btn" style="width: 100%; background: var(--accent-cyan); color: #000; font-weight: 600;">Conectar Cámara</button>
+          </div>
+        </div>
+      </details>
 
       <!-- Ajustes Expertos (Ocultos por defecto) -->
       <details class="expert-settings">
