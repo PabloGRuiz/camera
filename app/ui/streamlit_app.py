@@ -189,35 +189,39 @@ with tab_enrolamiento:
 with tab_registro:
     col_reg1, col_reg2 = st.columns([4, 1])
     with col_reg1:
-        st.subheader("Historial de Detecciones e Identificaciones (Caché Local)")
-        st.markdown("Historial temporal de eventos generados por este nodo.")
+        st.subheader("Historial de Capturas del Día (Almacenamiento Persistente SQLite)")
+        st.markdown("Registro local continuo con imágenes almacenado en disco (`data/local_logs.db`).")
     with col_reg2:
         if st.button("Vaciar Historial Local"):
             try:
                 res = requests.delete(f"{FASTAPI_URL}/api/logs", timeout=2)
                 if res.status_code == 200:
-                    st.success("Historial vaciado.")
+                    st.success("Historial local vaciado.")
                     st.rerun()
             except Exception:
                 st.error("Error al vaciar historial.")
 
-    if st.button("Actualizar Historial", key="btn_refresh_logs"):
+    if st.button("Actualizar Capturas", key="btn_refresh_logs"):
         st.rerun()
 
     try:
-        res = requests.get(f"{FASTAPI_URL}/api/logs", timeout=2)
+        res = requests.get(f"{FASTAPI_URL}/api/logs?limit=200", timeout=3)
         if res.status_code == 200:
             logs = res.json()
             if not logs:
-                st.info("Aún no hay registros de detecciones.")
+                st.info("Aún no hay capturas registradas en la base local.")
             else:
+                st.metric("Total Capturas del Día (Persistente)", len(logs))
                 cols = st.columns(3)
                 for i, log in enumerate(logs):
                     with cols[i % 3]:
-                        st.markdown(f"**Hora:** {log.get('timestamp')} - **Cámara:** {log.get('camera_id', 'N/A')}")
+                        cam_id = log.get('camera_id', 'N/A')
+                        ts = log.get('timestamp') or log.get('time', '')
+                        dt = log.get('date', '')
+                        st.markdown(f"**{dt} {ts}** | `{cam_id}`")
                         status = log.get('status', 'Desconocido')
                         name = log.get('name', 'Desconocido')
-                        if status == "No Registrado":
+                        if status in ["No Registrado", "Desconocido"]:
                             st.error(f"{name} ({status})")
                         else:
                             st.success(f"{name} ({status})")

@@ -29,6 +29,7 @@ from app.core.face_recognizer import face_recognizer
 from app.core.symbol_db import symbol_db
 from app.core.symbol_recognizer import symbol_recognizer
 from app.core.camera_manager import camera_manager
+from app.core.local_log_db import local_log_db
 
 logger = logging.getLogger("APIRoutes")
 
@@ -190,8 +191,8 @@ async def get_models():
     }
 
 @router.get("/api/logs")
-async def get_logs():
-    return list(event_logs)
+async def get_logs(limit: int = 200, date_str: Optional[str] = None):
+    return local_log_db.get_logs(limit=limit, date_str=date_str)
 
 @router.delete("/api/logs/{log_index}")
 async def delete_log(log_index: int):
@@ -205,6 +206,7 @@ async def clear_all_logs():
     event_logs.clear()
     logged_track_ids.clear()
     last_logged_times.clear()
+    local_log_db.clear_logs()
     return {"status": "success"}
 
 import threading
@@ -292,6 +294,9 @@ def _log_person_capture(camera_id: str, t_id: int, frame: np.ndarray, bbox: List
             "image": f"data:image/jpeg;base64,{b64_img}"
         }
         event_logs.appendleft(log_entry)
+
+        # Persistir en SQLite local
+        local_log_db.add_log(camera_id, t_id, name, status_role, "Persona", b64_img)
         
         # Send lightweight text log to central server via daemon thread
         send_to_central_server_async({
@@ -339,6 +344,9 @@ def _log_vehicle_capture(camera_id: str, t_id: int, frame: np.ndarray, bbox: Lis
             "image": f"data:image/jpeg;base64,{b64_img}"
         }
         event_logs.appendleft(log_entry)
+
+        # Persistir en SQLite local
+        local_log_db.add_log(camera_id, t_id, f"Vehículo ({vehicle_type_clean})", "Entrada Vehicular", "Vehículo", b64_img)
         
         # Send lightweight text log to central server via daemon thread
         send_to_central_server_async({
