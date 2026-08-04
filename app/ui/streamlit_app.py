@@ -27,7 +27,7 @@ try:
         
         st.sidebar.markdown(f"**Cámaras Activas:** {len(cameras)}")
         if cameras:
-            selected_view_cam = st.sidebar.selectbox("Cámara para Visualizar", cameras, index=0)
+            selected_view_cams = st.sidebar.multiselect("Cámaras para Visualizar", cameras, default=cameras[:1])
             
             fixed_selection = st.sidebar.selectbox("Fijar Inferencia en Cámara (Opcional)", ["Ninguna"] + cameras, index=0 if not fixed_camera else cameras.index(fixed_camera) + 1)
             
@@ -37,16 +37,17 @@ try:
                 st.sidebar.success("Configuración aplicada")
                 st.rerun()
         else:
-            selected_view_cam = None
+            selected_view_cams = []
             st.sidebar.warning("No hay cámaras conectadas.")
 
         st.sidebar.markdown("---")
         with st.sidebar.expander("➕ Añadir / Nombrar Cámara", expanded=False):
-            new_cam_id = st.text_input("Nombre / Alias de Cámara", value="Camara_Acceso_Sur")
-            source_type = st.selectbox("Origen de Video", ["Cámara Web Local (0)", "URL RTSP / IP", "Archivo MP4 Local"])
+            new_cam_id = st.text_input("Nombre / Alias de Cámara", value="Camara_Extra")
+            source_type = st.selectbox("Origen de Video", ["Cámara Web Local", "URL RTSP / IP", "Archivo MP4 Local"])
             
-            if source_type == "Cámara Web Local (0)":
-                default_src = "0"
+            if source_type == "Cámara Web Local":
+                cam_index = st.number_input("Índice de Cámara (0=Frontal, 1=Webcam, etc.)", min_value=0, max_value=10, value=0, step=1)
+                default_src = str(cam_index)
             elif source_type == "URL RTSP / IP":
                 default_src = "rtsp://admin:123456@192.168.1.100:554/stream1"
             else:
@@ -109,7 +110,7 @@ st.sidebar.markdown("---")
 draw_overlays = st.sidebar.checkbox("Mostrar Overlays en Vista Previa", value=True)
 mode = st.sidebar.radio("Modo de Transmisión", ["framed", "annotated", "dual"], index=0)
 
-if st.sidebar.button("Aplicar Cambios en Vivo") and selected_view_cam:
+if st.sidebar.button("Aplicar Cambios en Vivo") and selected_view_cams:
     try:
         payload = {
             "ema_alpha": float(ema_alpha),
@@ -118,7 +119,7 @@ if st.sidebar.button("Aplicar Cambios en Vivo") and selected_view_cam:
             "target_id": int(target_id),
             "draw_overlays": draw_overlays,
             "target_classes": target_classes_ids,
-            "camera_id": selected_view_cam
+            "camera_id": selected_view_cams[0] if len(selected_view_cams) == 1 else None
         }
         res = requests.post(f"{FASTAPI_URL}/api/settings", json=payload, headers=HEADERS, timeout=2)
         if res.status_code == 200:
@@ -142,9 +143,17 @@ with tab_dashboard:
 
     with col1:
         st.subheader("Transmisión en Vivo")
-        if selected_view_cam:
-            stream_url = f"{PUBLIC_FASTAPI_URL}/video_feed?camera_id={selected_view_cam}&mode={mode}"
-            st.image(stream_url, use_container_width=True)
+        if selected_view_cams:
+            if len(selected_view_cams) == 1:
+                stream_url = f"{PUBLIC_FASTAPI_URL}/video_feed?camera_id={selected_view_cams[0]}&mode={mode}"
+                st.markdown(f'<img src="{stream_url}" width="100%" style="border-radius: 8px; border: 1px solid #444;" />', unsafe_allow_html=True)
+            else:
+                grid_cols = st.columns(2)
+                for i, cam_id in enumerate(selected_view_cams):
+                    with grid_cols[i % 2]:
+                        st.markdown(f"**{cam_id}**")
+                        stream_url = f"{PUBLIC_FASTAPI_URL}/video_feed?camera_id={cam_id}&mode={mode}"
+                        st.markdown(f'<img src="{stream_url}" width="100%" style="border-radius: 8px; border: 1px solid #444;" />', unsafe_allow_html=True)
         else:
             st.info("Selecciona o conecta una cámara para ver el flujo.")
 
