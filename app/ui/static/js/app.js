@@ -182,6 +182,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  async function setActiveCamera(camId) {
+    activeCameraId = camId;
+    renderCameraTabs();
+    
+    // Notificar al backend para fijar inferencia en la cámara seleccionada
+    try {
+      await fetch('/api/camera/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+        body: JSON.stringify({ action: 'fix', camera_id: camId })
+      });
+    } catch (e) {}
+
+    updateStreamUrl();
+  }
+
   function renderCameraTabs() {
     if (!cameraTabsList) return;
     cameraTabsList.innerHTML = '';
@@ -201,9 +217,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       pill.addEventListener('click', (e) => {
         if (e.target.classList.contains('camera-tab-del')) return;
-        activeCameraId = camId;
-        renderCameraTabs();
-        updateStreamUrl();
+        setActiveCamera(camId);
       });
 
       if (availableCameras.length > 1) {
@@ -239,9 +253,15 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function updateStreamUrl() {
-    if (videoFeed) videoFeed.style.display = 'block';
+    if (!videoFeed) return;
+    videoFeed.style.display = 'block';
     const camParam = activeCameraId ? `&camera_id=${encodeURIComponent(activeCameraId)}` : '';
-    videoFeed.src = `/video_feed?mode=${currentMode}${camParam}&t=${Date.now()}`;
+    const newSrc = `/video_feed?mode=${currentMode}${camParam}&t=${Date.now()}`;
+    
+    videoFeed.src = '';
+    setTimeout(() => {
+      if (videoFeed) videoFeed.src = newSrc;
+    }, 50);
   }
 
   // Modal Conectar Cámara Handlers
@@ -947,4 +967,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   setInterval(fetchStatus, 1000);
   fetchStatus();
+
+  // Inicialización de Modelos y Cámaras
+  loadModels();
+  loadCameras();
 });
