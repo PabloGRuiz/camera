@@ -149,46 +149,196 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  loadModels();
+  let activeCameraId = null;
+  let availableCameras = [];
 
-  const newCamIdInput = document.getElementById('newCamIdInput');
-  const newCamSourceInput = document.getElementById('newCamSourceInput');
-  const addCameraBtn = document.getElementById('addCameraBtn');
+  const cameraTabsList = document.getElementById('cameraTabsList');
+  const openAddCamModalBtn = document.getElementById('openAddCamModalBtn');
+  const addCameraModal = document.getElementById('addCameraModal');
+  const closeAddCamModalBtn = document.getElementById('closeAddCamModalBtn');
+  const modalCamIdInput = document.getElementById('modalCamIdInput');
+  const modalSourceTypeSelect = document.getElementById('modalSourceTypeSelect');
+  const modalCustomSourceGroup = document.getElementById('modalCustomSourceGroup');
+  const modalSourceLabel = document.getElementById('modalSourceLabel');
+  const modalCamSourceInput = document.getElementById('modalCamSourceInput');
+  const modalAddCamSubmitBtn = document.getElementById('modalAddCamSubmitBtn');
+  const modalAddCamMsg = document.getElementById('modalAddCamMsg');
 
-  if (addCameraBtn) {
-    addCameraBtn.addEventListener('click', async () => {
-      const id = newCamIdInput ? newCamIdInput.value.trim() : '';
-      const source = newCamSourceInput ? newCamSourceInput.value.trim() : '0';
+  async function loadCameras() {
+    try {
+      const res = await fetch('/api/camera/list');
+      if (!res.ok) return;
+      const data = await res.json();
+      availableCameras = data.cameras || [];
+      
+      if (!activeCameraId || !availableCameras.includes(activeCameraId)) {
+        activeCameraId = availableCameras.length > 0 ? availableCameras[0] : null;
+      }
 
-      if (!id) {
-        alert('Por favor ingresa un nombre o alias para la cámara.');
+      renderCameraTabs();
+      updateStreamUrl();
+    } catch (e) {
+      console.error('Error cargando lista de cámaras:', e);
+    }
+  }
+
+  function renderCameraTabs() {
+    if (!cameraTabsList) return;
+    cameraTabsList.innerHTML = '';
+
+    if (availableCameras.length === 0) {
+      cameraTabsList.innerHTML = '<span style="color: var(--text-muted); font-size: 0.85rem;">No hay cámaras conectadas</span>';
+      return;
+    }
+
+    availableCameras.forEach(camId => {
+      const pill = document.createElement('div');
+      pill.className = `camera-tab-pill ${camId === activeCameraId ? 'active' : ''}`;
+      
+      const labelSpan = document.createElement('span');
+      labelSpan.textContent = `📹 ${camId}`;
+      pill.appendChild(labelSpan);
+
+      pill.addEventListener('click', (e) => {
+        if (e.target.classList.contains('camera-tab-del')) return;
+        activeCameraId = camId;
+        renderCameraTabs();
+        updateStreamUrl();
+      });
+
+      if (availableCameras.length > 1) {
+        const delBtn = document.createElement('span');
+        delBtn.className = 'camera-tab-del';
+        delBtn.innerHTML = '&times;';
+        delBtn.title = 'Desconectar cámara';
+        delBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (confirm(`¿Desconectar la cámara '${camId}'?`)) {
+            await removeCamera(camId);
+          }
+        });
+        pill.appendChild(delBtn);
+      }
+
+      cameraTabsList.appendChild(pill);
+    });
+  }
+
+  async function removeCamera(camId) {
+    try {
+      const res = await fetch('/api/camera/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+        body: JSON.stringify({ action: 'remove', camera_id: camId })
+      });
+      if (res.ok) {
+        if (activeCameraId === camId) activeCameraId = null;
+        loadCameras();
+      }
+    } catch (e) {}
+  }
+
+  function updateStreamUrl() {
+    if (videoFeed) videoFeed.style.display = 'block';
+    const camParam = activeCameraId ? `&camera_id=${encodeURIComponent(activeCameraId)}` : '';
+    videoFeed.src = `/video_feed?mode=${currentMode}${camParam}&t=${Date.now()}`;
+  }
+
+  // Modal Conectar Cámara Handlers
+  if (openAddCamModalBtn && addCameraModal) {
+    openAddCamModalBtn.addEventListener('click', () => {
+      if (modalCamIdInput) modalCamIdInput.value = `Camara_${availableCameras.length + 1}`;
+      if (modalSourceTypeSelect) modalSourceTypeSelect.value = 'webcam_0';
+      handleSourceTypeChange();
+      if (modalAddCamMsg) modalAddCamMsg.innerHTML = '';
+      addCameraModal.style.display = 'flex';
+    });
+  }
+
+  if (closeAddCamModalBtn && addCameraModal) {
+    closeAddCamModalBtn.addEventListener('click', () => {
+      addCameraModal.style.display = 'none';
+    });
+  }
+
+  if (modalSourceTypeSelect) {
+    modalSourceTypeSelect.addEventListener('change', handleSourceTypeChange);
+  }
+
+  function handleSourceTypeChange() {
+    const val = modalSourceTypeSelect.value;
+    if (val === 'webcam_0') {
+      modalCustomSourceGroup.style.display = 'none';
+      modalCamSourceInput.value = '0';
+    } else if (val === 'webcam_1') {
+      modalCustomSourceGroup.style.display = 'none';
+      modalCamSourceInput.value = '1';
+    } else if (val === 'webcam_custom') {
+      modalCustomSourceGroup.style.display = 'block';
+      if (modalSourceLabel) modalSourceLabel.textContent = 'Número / Índice de Webcam USB (ej. 2):';
+      modalCamSourceInput.value = '2';
+    } else if (val === 'rtsp') {
+      modalCustomSourceGroup.style.display = 'block';
+      if (modalSourceLabel) modalSourceLabel.textContent = 'URL del Stream RTSP IP:';
+      modalCamSourceInput.value = 'rtsp://admin:123456@192.168.1.100:554/stream1';
+    } else if (val === 'mp4') {
+      modalCustomSourceGroup.style.display = 'block';
+      if (modalSourceLabel) modalSourceLabel.textContent = 'Ruta del Archivo MP4:';
+      modalCamSourceInput.value = 'videos/sample.mp4';
+    }
+  }
+
+  if (modalAddCamSubmitBtn) {
+    modalAddCamSubmitBtn.addEventListener('click', async () => {
+      const camId = modalCamIdInput.value.trim();
+      const source = modalCamSourceInput.value.trim();
+
+      if (!camId) {
+        if (modalAddCamMsg) {
+          modalAddCamMsg.innerHTML = '❌ Por favor ingresa un nombre para la cámara.';
+          modalAddCamMsg.style.color = '#f87171';
+        }
         return;
+      }
+
+      if (modalAddCamMsg) {
+        modalAddCamMsg.innerHTML = '⚡ Conectando cámara...';
+        modalAddCamMsg.style.color = 'var(--accent-cyan)';
       }
 
       try {
         const res = await fetch('/api/camera/control', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
-          body: JSON.stringify({ action: 'add', source: source || '0', camera_id: id })
+          body: JSON.stringify({ action: 'add', source: source || '0', camera_id: camId })
         });
         if (res.ok) {
-          alert(`Cámara '${id}' conectada exitosamente.`);
-          if (newCamIdInput) newCamIdInput.value = '';
-          if (newCamSourceInput) newCamSourceInput.value = '';
-          updateStreamUrl();
+          if (modalAddCamMsg) {
+            modalAddCamMsg.innerHTML = '✅ Cámara conectada con éxito.';
+            modalAddCamMsg.style.color = '#10b981';
+          }
+          activeCameraId = camId;
+          setTimeout(() => {
+            if (addCameraModal) addCameraModal.style.display = 'none';
+            loadCameras();
+          }, 600);
         } else {
-          alert('Error al conectar la cámara.');
+          const errData = await res.json();
+          if (modalAddCamMsg) {
+            modalAddCamMsg.innerHTML = `❌ Error: ${errData.detail || 'No se pudo conectar la cámara'}`;
+            modalAddCamMsg.style.color = '#f87171';
+          }
         }
       } catch (e) {
-        alert('Error de red: ' + e.message);
+        if (modalAddCamMsg) {
+          modalAddCamMsg.innerHTML = `❌ Error de red: ${e.message}`;
+          modalAddCamMsg.style.color = '#f87171';
+        }
       }
     });
   }
 
-  function updateStreamUrl() {
-    if (videoFeed) videoFeed.style.display = 'block';
-    videoFeed.src = `/video_feed?mode=${currentMode}&t=${Date.now()}`;
-  }
+  loadCameras();
 
   // Webcam Setup
   if (webcamToggleBtn) {

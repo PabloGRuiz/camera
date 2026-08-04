@@ -212,6 +212,75 @@ body {
   gap: 10px;
 }
 
+/* Camera Toolbar & Tabs */
+.camera-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--bg-card-border);
+  margin-bottom: 15px;
+  flex-wrap: wrap;
+}
+
+.camera-tabs-list {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.camera-tab-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--bg-card-border);
+  color: var(--text-muted);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.camera-tab-pill:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.camera-tab-pill.active {
+  background: linear-gradient(135deg, rgba(0, 255, 224, 0.2), rgba(0, 255, 224, 0.05));
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  box-shadow: 0 0 10px rgba(0, 255, 224, 0.2);
+  font-weight: 600;
+}
+
+.camera-tab-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  font-size: 0.75rem;
+  font-weight: 700;
+  transition: background 0.2s ease;
+}
+
+.camera-tab-del:hover {
+  background: rgba(239, 68, 68, 0.8);
+  color: #fff;
+}
+
 .video-view-container {
   flex: 1;
   background: #000;

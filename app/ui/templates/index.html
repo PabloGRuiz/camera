@@ -46,6 +46,16 @@
         </div>
       </div>
 
+      <!-- Barra Selector de Cámaras Activas -->
+      <div class="camera-toolbar">
+        <div class="camera-tabs-list" id="cameraTabsList">
+          <!-- Pestañas de cámaras generadas dinámicamente por JS -->
+        </div>
+        <button id="openAddCamModalBtn" class="webcam-btn" style="background: rgba(0, 255, 224, 0.15); border-color: rgba(0, 255, 224, 0.5); color: var(--accent-cyan); padding: 6px 14px; font-weight: 600;">
+          ➕ Conectar Cámara
+        </button>
+      </div>
+
       <div class="video-view-container">
         <img id="videoFeed" src="/video_feed?mode=framed" alt="Flujo de video en vivo" class="video-stream-img">
         <canvas id="outputCanvas" class="video-stream-img" style="display:none;"></canvas>
@@ -93,20 +103,6 @@
       <div id="dynamicFiltersContainer" class="filters-grid">
         <!-- Switches generados por JS -->
       </div>
-
-      <!-- Gestión de Cámaras -->
-      <details class="expert-settings" style="margin-bottom: 12px;">
-        <summary style="color: var(--accent-cyan); font-weight: 600;">📹 Gestión de Cámaras (Añadir / Nombrar)</summary>
-        <div class="expert-content" style="padding-top: 10px;">
-          <div class="control-group">
-            <label style="font-size: 0.75rem; color: var(--text-muted);">Nombre / Alias de la Cámara:</label>
-            <input type="text" id="newCamIdInput" placeholder="Ej: Camara_Acceso_Norte" style="width: 100%; padding: 6px; border-radius: 4px; background: rgba(0,0,0,0.3); border: 1px solid var(--bg-card-border); color: #fff; margin-bottom: 8px;">
-            <label style="font-size: 0.75rem; color: var(--text-muted);">Origen (ID '0', RTSP o MP4):</label>
-            <input type="text" id="newCamSourceInput" placeholder="0 o rtsp://192.168.1.100..." style="width: 100%; padding: 6px; border-radius: 4px; background: rgba(0,0,0,0.3); border: 1px solid var(--bg-card-border); color: #fff; margin-bottom: 10px;">
-            <button id="addCameraBtn" class="filter-action-btn" style="width: 100%; background: var(--accent-cyan); color: #000; font-weight: 600;">Conectar Cámara</button>
-          </div>
-        </div>
-      </details>
 
       <!-- Ajustes Expertos (Ocultos por defecto) -->
       <details class="expert-settings">
@@ -332,6 +328,49 @@
             <li><strong>Filtrado Dinámico:</strong> Menú reactivo que expone las clases específicas de cada modelo cargado (ej. coche, persona, tanque militar) y permite habilitar o deshabilitar detecciones con interruptores para evitar ruidos visuales.</li>
             <li><strong>Ajustes Expertos:</strong> Controles deslizantes para ajustar el factor de suavizado del encuadre (EMA Alpha) y el margen de seguridad de la visualización (Padding).</li>
           </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Conectar Nueva Cámara -->
+  <div id="addCameraModal" class="modal-overlay" style="display: none;">
+    <div class="modal-content" style="max-width: 480px; width: 90%; padding: 25px;">
+      <span class="modal-close" id="closeAddCamModalBtn">&times;</span>
+      <h2 style="font-size: 1.3rem; color: #fff; margin-bottom: 15px; border-bottom: 1px solid var(--bg-card-border); padding-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+        <span>📹</span> Conectar Nueva Cámara
+      </h2>
+      
+      <div style="display: flex; flex-direction: column; gap: 15px; text-align: left;">
+        <div class="control-group">
+          <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 5px;">Nombre / Alias de la Cámara (Entidad):</label>
+          <input type="text" id="modalCamIdInput" placeholder="Ej: Camara_Acceso_Sur" class="premium-input" style="width: 100%; font-size: 0.9rem;">
+        </div>
+
+        <div class="control-group">
+          <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 5px;">Tipo de Origen de Video:</label>
+          <div class="select-wrapper">
+            <select id="modalSourceTypeSelect" class="premium-select" style="width: 100%;">
+              <option value="webcam_0">Cámara Web Integrada (Índice 0)</option>
+              <option value="webcam_1">Webcam USB Secundaria (Índice 1)</option>
+              <option value="webcam_custom">Webcam USB (Índice Personalizado)</option>
+              <option value="rtsp">Cámara IP (Stream RTSP)</option>
+              <option value="mp4">Archivo de Video MP4</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="control-group" id="modalCustomSourceGroup" style="display: none;">
+          <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 5px;" id="modalSourceLabel">Origen / Ruta / URL:</label>
+          <input type="text" id="modalCamSourceInput" value="0" placeholder="0, 1, rtsp://... o video.mp4" class="premium-input" style="width: 100%; font-size: 0.9rem;">
+        </div>
+
+        <div id="modalAddCamMsg" style="font-size: 0.85rem; min-height: 18px;"></div>
+
+        <div style="display: flex; gap: 10px; margin-top: 5px;">
+          <button id="modalAddCamSubmitBtn" class="filter-action-btn" style="flex: 1; background: var(--accent-cyan); color: #000; font-weight: 700; padding: 10px; font-size: 0.9rem;">
+            Conectar Cámara
+          </button>
         </div>
       </div>
     </div>
