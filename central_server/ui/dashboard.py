@@ -34,9 +34,15 @@ with col_btn3:
 
 # Consultar siempre con una sesión nueva para evitar caché de datos viejos
 with SessionLocal() as db:
-    logs = db.query(LogEvent).order_by(LogEvent.timestamp.desc()).limit(100).all()
+    total_count = db.query(LogEvent).count()
+    persona_count = db.query(LogEvent).filter((LogEvent.event_type == 'Persona') | (LogEvent.event_type.is_(None))).count()
+    vehiculo_count = db.query(LogEvent).filter(LogEvent.event_type == 'Vehículo').count()
+    active_nodes_count = db.query(LogEvent.camera_id).distinct().count()
+    
+    limit_val = st.sidebar.selectbox("Límite de Registros a Mostrar", [100, 200, 500, 1000, 5000], index=2)
+    logs = db.query(LogEvent).order_by(LogEvent.timestamp.desc()).limit(limit_val).all()
 
-if not logs:
+if total_count == 0:
     st.info("No hay registros en la base de datos central.")
 else:
     data = []
@@ -53,12 +59,12 @@ else:
     df = pd.DataFrame(data)
     
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Eventos", len(logs))
-    col2.metric("Persona (Biometría)", len(df[df["Tipo Evento"] == "Persona"]) if not df.empty else 0)
-    col3.metric("Entrada Vehicular", len(df[df["Tipo Evento"] == "Vehículo"]) if not df.empty else 0)
-    col4.metric("Nodos Activos", df["Cámara"].nunique() if not df.empty else 0)
+    col1.metric("Total Eventos en BD", total_count)
+    col2.metric("Persona (Biometría)", persona_count)
+    col3.metric("Entrada Vehicular", vehiculo_count)
+    col4.metric("Nodos Activos", active_nodes_count)
     
-    st.subheader("Registro Centralizado de Eventos (Edge Computing - Personas & Vehículos)")
+    st.subheader(f"Registro Centralizado de Eventos (Mostrando últimos {len(df)} de {total_count})")
     st.dataframe(df, use_container_width=True)
 
 if auto_refresh:
