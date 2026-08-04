@@ -209,17 +209,50 @@ async def clear_all_logs():
 
 import threading
 
-def send_to_central_server_async(payload: dict):
-    def _worker():
-        try:
-            url = f"{CENTRAL_SERVER_URL}/api/report_log"
-            res = httpx.post(url, json=payload, timeout=5.0)
-            logger.info(f"Reporte enviado al servidor central: {res.status_code}")
-        except Exception as e:
-            logger.error(f"Error enviando log al servidor central: {e}")
+pending_central_logs = deque(maxlen=300)
+_is_retry_worker_running = False
+_retry_lock = threading.Lock()
 
-    thread = threading.Thread(target=_worker, daemon=True)
+def _flush_pending_logs_worker():
+    global _is_retry_worker_running
+    with _retry_lock:
+        if _is_retry_worker_running:
+            return
+        _is_retry_worker_running = True
+
+    try:
+        url = f"{CENTRAL_SERVER_URL}/api/report_log"
+        while pending_central_logs:
+            payload = pending_central_logs[0]
+            try:
+                res = httpx.post(url, json=payload, timeout=4.0)
+                if res.status_code == 200:
+                    pending_central_logs.popleft()
+                    logger.info(f"Log ráfaga enviado al servidor central. Pendientes: {len(pending_central_logs)}")
+                else:
+                    break
+            except Exception as e:
+                # Servidor o red offline: mantener eventos en cola hasta reconexión
+                break
+    finally:
+        with _retry_lock:
+            _is_retry_worker_running = False
+
+def send_to_central_server_async(payload: dict):
+    pending_central_logs.append(payload)
+    thread = threading.Thread(target=_flush_pending_logs_worker, daemon=True)
     thread.start()
+
+def _start_periodic_retry():
+    def _loop():
+        while True:
+            time.sleep(8)
+            if pending_central_logs:
+                _flush_pending_logs_worker()
+    t = threading.Thread(target=_loop, daemon=True)
+    t.start()
+
+_start_periodic_retry()
 
 def _log_person_capture(camera_id: str, t_id: int, frame: np.ndarray, bbox: List[float], match_info: dict):
     now = time.time()
