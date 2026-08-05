@@ -256,6 +256,43 @@ def _start_periodic_retry():
 
 _start_periodic_retry()
 
+def _send_node_register():
+    try:
+        url = f"{CENTRAL_SERVER_URL}/api/nodes/register"
+        payload = {
+            "node_id": getattr(settings, "NODE_ID", "NODE-LOCAL-01"),
+            "node_name": getattr(settings, "NODE_NAME", "Estacion de Control Local"),
+            "active_cameras_count": len(camera_manager._camera_ids)
+        }
+        httpx.post(url, json=payload, timeout=3.0)
+    except Exception:
+        pass
+
+def _send_node_heartbeat():
+    try:
+        url = f"{CENTRAL_SERVER_URL}/api/nodes/heartbeat"
+        payload = {
+            "node_id": getattr(settings, "NODE_ID", "NODE-LOCAL-01"),
+            "current_fps": round(pipeline_stats.get("fps", 0.0), 1),
+            "inference_latency_ms": round(pipeline_stats.get("inference_latency_ms", 0.0), 1),
+            "pending_logs_count": len(pending_central_logs),
+            "active_cameras_count": len(camera_manager._camera_ids)
+        }
+        httpx.post(url, json=payload, timeout=3.0)
+    except Exception:
+        pass
+
+def _start_heartbeat_daemon():
+    def _loop():
+        _send_node_register()
+        while True:
+            time.sleep(getattr(settings, "HEARTBEAT_INTERVAL", 10))
+            _send_node_heartbeat()
+    t = threading.Thread(target=_loop, daemon=True)
+    t.start()
+
+_start_heartbeat_daemon()
+
 def _log_person_capture(camera_id: str, t_id: int, frame: np.ndarray, bbox: List[float], match_info: dict):
     now = time.time()
     name = match_info.get("name", "Desconocido")

@@ -33,8 +33,12 @@ class Settings(BaseSettings):
     VIDEO_SOURCE: str = "SYNTHETIC"     # "SYNTHETIC", "0" (webcam), o ruta a un archivo MP4/stream RTSP
     MAX_FPS: int = 10
     DRAW_OVERLAYS: bool = True          # Dibujar cajas y vectores en la vista previa
-    OUTPUT_WIDTH: int = 1280
-    OUTPUT_HEIGHT: int = 720
+    # Servidor Central & Identificación del Nodo
+    CENTRAL_SERVER_URL: str = "http://localhost:8082"
+    NODE_ID: str = "NODE-LOCAL-01"
+    NODE_NAME: str = "Estacion de Control Local"
+    HEARTBEAT_INTERVAL: int = 10
+    NODE_AUTH_TOKEN: str = "super_secret_edge_key_2026"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

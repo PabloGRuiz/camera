@@ -9,6 +9,8 @@ engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
+from sqlalchemy import Float
+
 class LogEvent(Base):
     __tablename__ = "log_events"
     id = Column(Integer, primary_key=True, index=True)
@@ -18,6 +20,18 @@ class LogEvent(Base):
     role = Column(String)
     event_type = Column(String, default="Persona", index=True)
     image_b64 = Column(String, nullable=True)
+
+class RegisteredNode(Base):
+    __tablename__ = "registered_nodes"
+    node_id = Column(String, primary_key=True, index=True)
+    node_name = Column(String)
+    status = Column(String, default="ONLINE")
+    last_seen = Column(DateTime, default=datetime.now)
+    current_fps = Column(Float, default=0.0)
+    inference_latency_ms = Column(Float, default=0.0)
+    pending_logs_count = Column(Integer, default=0)
+    active_cameras_count = Column(Integer, default=1)
+    ip_address = Column(String, nullable=True)
 
 Base.metadata.create_all(bind=engine)
 

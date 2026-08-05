@@ -1,0 +1,8 @@
+{
+    "CENTRAL_SERVER_URL": "http://192.168.1.100:8082",
+    "NODE_ID": "NODE-SUCURSAL-ROSARIO-01",
+    "NODE_NAME": "Sucursal Rosario - Acceso Principal",
+    "NODE_AUTH_TOKEN": "super_secret_edge_key_2026",
+    "HEARTBEAT_INTERVAL": 10,
+    "OFFLINE_BUFFER_LIMIT": 1000
+}
