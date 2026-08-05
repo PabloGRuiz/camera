@@ -6,9 +6,20 @@ from sqlalchemy.orm import Session
 import os
 import sys
 
-# Add parent directory to path to import database
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from database import SessionLocal, LogEvent, RegisteredNode
+import importlib
+
+# Add parent directory to top of sys.path to ensure importing central_server/database.py
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
+try:
+    from database import SessionLocal, LogEvent, RegisteredNode
+except ImportError:
+    import database
+    importlib.reload(database)
+    from database import SessionLocal, LogEvent, RegisteredNode
+
 from datetime import datetime
 
 st.set_page_config(page_title="Central Server - Dashboard", layout="wide")
