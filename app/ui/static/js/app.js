@@ -551,11 +551,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const payload = {
-      ema_alpha: parseFloat(emaSlider.value),
-      padding: parseFloat(paddingSlider.value) / 100.0,
-      target_id: parseInt(targetIdInput.value) || -1,
-      draw_overlays: overlayCheckbox.checked,
-      active_model: activeModelSelect.value,
+      ema_alpha: emaSlider ? parseFloat(emaSlider.value) : 0.15,
+      padding: paddingSlider ? parseFloat(paddingSlider.value) / 100.0 : 0.20,
+      target_id: targetIdInput ? (parseInt(targetIdInput.value) || -1) : -1,
+      draw_overlays: overlayCheckbox ? overlayCheckbox.checked : true,
+      active_model: activeModelSelect ? activeModelSelect.value : 'STANDARD',
       target_classes: classesPayload,
       max_fps: maxFpsSelect ? parseInt(maxFpsSelect.value) : 30
     };
@@ -1008,18 +1008,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // Polling de Telemetría cada 1 segundo
   async function fetchStatus() {
     try {
-      // También verificamos si hay cámaras nuevas (Webcam/Pantalla agregada dinámicamente)
-      loadCameras();
-      
       const res = await fetch('/api/status');
       if (res.ok) {
         const data = await res.json();
-        fpsStat.textContent = `${data.fps} FPS`;
-        latencyStat.textContent = `${data.inference_latency_ms} ms`;
-        deviceStat.textContent = data.openvino_device || 'CPU';
+        if (fpsStat) fpsStat.textContent = `${data.fps} FPS`;
+        if (latencyStat) latencyStat.textContent = `${data.inference_latency_ms} ms`;
+        if (deviceStat) deviceStat.textContent = data.openvino_device || 'CPU';
         
         const activeTarget = data.telemetry?.active_target_id;
-        targetIdStat.textContent = activeTarget ? `ID #${activeTarget}` : 'Auto';
+        if (targetIdStat) targetIdStat.textContent = activeTarget ? `ID #${activeTarget}` : 'Auto';
       }
     } catch (err) {}
   }
