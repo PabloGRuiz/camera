@@ -3,6 +3,7 @@ from typing import Dict, Optional, List
 import logging
 from app.core.video_stream import VideoStreamReader
 from app.core.auto_framing import AutoFramingEngine
+from app.core.detector import OpenVINODetector
 from app.core.config import settings
 
 logger = logging.getLogger("CameraManager")
@@ -11,6 +12,9 @@ class CameraManager:
     def __init__(self):
         self.cameras: Dict[str, VideoStreamReader] = {}
         self.framing_engines: Dict[str, AutoFramingEngine] = {}
+        self.detectors: Dict[str, OpenVINODetector] = {}
+        import cv2
+        self.motion_detectors: Dict[str, cv2.BackgroundSubtractor] = {}
         self.fixed_camera_id: Optional[str] = None
         self._camera_ids: List[str] = []
         self._round_robin_idx: int = 0
@@ -24,6 +28,9 @@ class CameraManager:
             reader.start()
             self.cameras[camera_id] = reader
             self.framing_engines[camera_id] = AutoFramingEngine()
+            self.detectors[camera_id] = OpenVINODetector()
+            import cv2
+            self.motion_detectors[camera_id] = cv2.createBackgroundSubtractorMOG2(history=100, varThreshold=25, detectShadows=False)
             if camera_id not in self._camera_ids:
                 self._camera_ids.append(camera_id)
         return self.cameras[camera_id]
@@ -33,6 +40,10 @@ class CameraManager:
             self.cameras[camera_id].stop()
             del self.cameras[camera_id]
             del self.framing_engines[camera_id]
+            if camera_id in self.detectors:
+                del self.detectors[camera_id]
+            if camera_id in self.motion_detectors:
+                del self.motion_detectors[camera_id]
             if camera_id in self._camera_ids:
                 self._camera_ids.remove(camera_id)
             if self.fixed_camera_id == camera_id:
@@ -44,6 +55,12 @@ class CameraManager:
     def get_framing_engine(self, camera_id: str) -> Optional[AutoFramingEngine]:
         return self.framing_engines.get(camera_id)
 
+    def get_detector(self, camera_id: str) -> Optional[OpenVINODetector]:
+        return self.detectors.get(camera_id)
+
+    def get_motion_detector(self, camera_id: str):
+        return self.motion_detectors.get(camera_id)
+
     def get_active_inference_camera(self) -> Optional[str]:
         if not self._camera_ids:
             return None
@@ -51,10 +68,8 @@ class CameraManager:
         if self.fixed_camera_id and self.fixed_camera_id in self.cameras:
             return self.fixed_camera_id
             
-        now = time.time()
-        if now - self._last_rotation_time > self.rotation_interval:
-            self._round_robin_idx = (self._round_robin_idx + 1) % len(self._camera_ids)
-            self._last_rotation_time = now
+        if self._round_robin_idx >= len(self._camera_ids):
+            self._round_robin_idx = 0
             
         return self._camera_ids[self._round_robin_idx]
 

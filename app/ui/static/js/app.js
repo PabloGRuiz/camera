@@ -149,8 +149,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  let activeCameraId = null;
   let availableCameras = [];
+
+  const videoWallContainer = document.getElementById('videoWallContainer');
+  const liveAlertsContainer = document.getElementById('liveAlertsContainer');
+  let lastLogId = 0;
 
   const cameraTabsList = document.getElementById('cameraTabsList');
   const openAddCamModalBtn = document.getElementById('openAddCamModalBtn');
@@ -169,72 +172,74 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch('/api/camera/list');
       if (!res.ok) return;
       const data = await res.json();
-      availableCameras = data.cameras || [];
       
-      if (!activeCameraId || !availableCameras.includes(activeCameraId)) {
-        activeCameraId = availableCameras.length > 0 ? availableCameras[0] : null;
+      const newCameras = data.cameras || [];
+      // Solo re-renderizar si la lista de cámaras ha cambiado
+      if (JSON.stringify(availableCameras) !== JSON.stringify(newCameras)) {
+        availableCameras = newCameras;
+        if (cameraTabsList) {
+          cameraTabsList.innerHTML = `<span style="color: var(--text-muted); font-size: 0.85rem;">${availableCameras.length} cámara(s) conectada(s)</span>`;
+        }
+        renderVideoWall();
       }
-
-      renderCameraTabs();
-      updateStreamUrl();
     } catch (e) {
       console.error('Error cargando lista de cámaras:', e);
     }
   }
 
-  async function setActiveCamera(camId) {
-    activeCameraId = camId;
-    renderCameraTabs();
+  function renderVideoWall() {
+    if (!videoWallContainer) return;
     
-    // Notificar al backend para fijar inferencia en la cámara seleccionada
-    try {
-      await fetch('/api/camera/control', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
-        body: JSON.stringify({ action: 'fix', camera_id: camId })
-      });
-    } catch (e) {}
-
-    updateStreamUrl();
-  }
-
-  function renderCameraTabs() {
-    if (!cameraTabsList) return;
-    cameraTabsList.innerHTML = '';
+    // Maintain existing elements like webcamVideo if any, but clear old streams
+    Array.from(videoWallContainer.children).forEach(child => {
+      if (child.id !== 'webcamVideo' && child.id !== 'webcamCanvas') {
+        videoWallContainer.removeChild(child);
+      }
+    });
 
     if (availableCameras.length === 0) {
-      cameraTabsList.innerHTML = '<span style="color: var(--text-muted); font-size: 0.85rem;">No hay cámaras conectadas</span>';
+      const msg = document.createElement('div');
+      msg.style.color = 'var(--text-muted)';
+      msg.style.textAlign = 'center';
+      msg.style.padding = '40px';
+      msg.style.gridColumn = '1 / -1';
+      msg.textContent = 'No hay cámaras conectadas al Video Wall.';
+      videoWallContainer.appendChild(msg);
       return;
     }
 
     availableCameras.forEach(camId => {
-      const pill = document.createElement('div');
-      pill.className = `camera-tab-pill ${camId === activeCameraId ? 'active' : ''}`;
+      const cell = document.createElement('div');
+      cell.className = 'camera-cell';
       
-      const labelSpan = document.createElement('span');
-      labelSpan.textContent = `📹 ${camId}`;
-      pill.appendChild(labelSpan);
+      const title = document.createElement('div');
+      title.className = 'camera-cell-title';
+      title.textContent = camId;
+      
+      const img = document.createElement('img');
+      img.alt = `Cámara ${camId}`;
+      img.className = 'video-stream-img';
+      // Append timestamp to force reload
+      img.src = `/video_feed?mode=${currentMode}&camera_id=${encodeURIComponent(camId)}&t=${Date.now()}`;
+      
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn-danger';
+      delBtn.style.position = 'absolute';
+      delBtn.style.bottom = '8px';
+      delBtn.style.right = '8px';
+      delBtn.style.padding = '4px 8px';
+      delBtn.style.fontSize = '0.7rem';
+      delBtn.textContent = 'Desconectar';
+      delBtn.onclick = async () => {
+        if (confirm(`¿Desconectar la cámara '${camId}'?`)) {
+          await removeCamera(camId);
+        }
+      };
 
-      pill.addEventListener('click', (e) => {
-        if (e.target.classList.contains('camera-tab-del')) return;
-        setActiveCamera(camId);
-      });
-
-      if (availableCameras.length > 1) {
-        const delBtn = document.createElement('span');
-        delBtn.className = 'camera-tab-del';
-        delBtn.innerHTML = '&times;';
-        delBtn.title = 'Desconectar cámara';
-        delBtn.addEventListener('click', async (e) => {
-          e.stopPropagation();
-          if (confirm(`¿Desconectar la cámara '${camId}'?`)) {
-            await removeCamera(camId);
-          }
-        });
-        pill.appendChild(delBtn);
-      }
-
-      cameraTabsList.appendChild(pill);
+      cell.appendChild(img);
+      cell.appendChild(title);
+      cell.appendChild(delBtn);
+      videoWallContainer.appendChild(cell);
     });
   }
 
@@ -246,23 +251,70 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({ action: 'remove', camera_id: camId })
       });
       if (res.ok) {
-        if (activeCameraId === camId) activeCameraId = null;
         loadCameras();
       }
     } catch (e) {}
   }
 
   function updateStreamUrl() {
-    if (!videoFeed) return;
-    videoFeed.style.display = 'block';
-    const camParam = activeCameraId ? `&camera_id=${encodeURIComponent(activeCameraId)}` : '';
-    const newSrc = `/video_feed?mode=${currentMode}${camParam}&t=${Date.now()}`;
-    
-    videoFeed.src = '';
-    setTimeout(() => {
-      if (videoFeed) videoFeed.src = newSrc;
-    }, 50);
+    // When mode changes, refresh video wall to update src parameters
+    renderVideoWall();
   }
+
+  // --- POLING PARA ALERTAS EN TIEMPO REAL ---
+  async function pollLiveAlerts() {
+    if (!liveAlertsContainer) return;
+    try {
+      const res = await fetch('/api/logs?limit=5');
+      if (!res.ok) return;
+      const data = await res.json();
+      const logs = data.logs || [];
+      
+      if (logs.length === 0) return;
+      
+      // Get the latest log ID to only add new ones
+      const newLogs = logs.filter(log => log.id > lastLogId);
+      
+      if (newLogs.length > 0) {
+        if (lastLogId === 0) {
+           liveAlertsContainer.innerHTML = ''; // Clear "Esperando..." message
+        }
+        
+        // Reverse to append oldest first among the new ones
+        newLogs.reverse().forEach(log => {
+           const alertDiv = document.createElement('div');
+           
+           const isDanger = log.role === 'No Registrado' || log.event_type === 'Alerta';
+           const isWarning = log.event_type === 'Vehículo';
+           
+           alertDiv.className = `live-alert-card ${isDanger ? 'danger' : (isWarning ? 'warning' : '')}`;
+           
+           const imgHtml = log.image_path ? `<img src="${log.image_path}" class="live-alert-img" alt="Captura">` : `<div class="live-alert-img" style="background:#333"></div>`;
+           
+           alertDiv.innerHTML = `
+              ${imgHtml}
+              <div class="live-alert-content">
+                 <div class="live-alert-title">${log.person_name}</div>
+                 <div class="live-alert-meta">📍 ${log.camera_id} • 🕒 ${log.timestamp.substring(11, 19)}</div>
+              </div>
+           `;
+           
+           liveAlertsContainer.prepend(alertDiv);
+           
+           // Keep only max 15 alerts in UI
+           if (liveAlertsContainer.children.length > 15) {
+              liveAlertsContainer.removeChild(liveAlertsContainer.lastChild);
+           }
+           
+           lastLogId = Math.max(lastLogId, log.id);
+        });
+      }
+    } catch (e) {
+      console.error("Error polling alerts:", e);
+    }
+  }
+  
+  setInterval(pollLiveAlerts, 2000);
 
   // Modal Conectar Cámara Handlers
   if (openAddCamModalBtn && addCameraModal) {
@@ -360,24 +412,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
   loadCameras();
 
-  // Webcam Setup
+  // Captura Independiente de Webcam y Pantalla
+  const webcamVideoEl = document.createElement('video');
+  webcamVideoEl.autoplay = true;
+  webcamVideoEl.muted = true;
+  
+  const screenVideoEl = document.createElement('video');
+  screenVideoEl.autoplay = true;
+  screenVideoEl.muted = true;
+
   if (webcamToggleBtn) {
     webcamToggleBtn.addEventListener('click', async () => {
-      if (!isWebcamActive || screenStream) {
+      if (!isWebcamActive) {
         try {
-          if (screenStream) stopScreenShare();
           webcamStream = await navigator.mediaDevices.getUserMedia({
             video: { width: { ideal: 1280 }, height: { ideal: 720 } }
           });
-          webcamVideo.srcObject = webcamStream;
-          await webcamVideo.play();
+          webcamVideoEl.srcObject = webcamStream;
+          await webcamVideoEl.play();
           
           isWebcamActive = true;
           webcamToggleBtn.classList.add('active');
           webcamToggleBtn.textContent = 'Detener Cámara';
           
-          updateStreamUrl();
-          startWebcamLoop();
+          startCaptureLoop(webcamVideoEl, 'Webcam_Local', () => isWebcamActive);
         } catch (err) {
           alert('No se pudo acceder a la webcam: ' + err.message);
         }
@@ -387,29 +445,27 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Compartir Pantalla
   const screenShareToggleBtn = document.getElementById('screenShareToggleBtn');
   let screenStream = null;
+  let isScreenActive = false;
 
   if (screenShareToggleBtn) {
     screenShareToggleBtn.addEventListener('click', async () => {
-      if (!screenStream) {
+      if (!isScreenActive) {
         try {
-          if (isWebcamActive) stopWebcam();
           screenStream = await navigator.mediaDevices.getDisplayMedia({
             video: { cursor: "always" },
             audio: false
           });
-          webcamVideo.srcObject = screenStream;
-          await webcamVideo.play();
+          screenVideoEl.srcObject = screenStream;
+          await screenVideoEl.play();
           
-          isWebcamActive = true;
+          isScreenActive = true;
           screenShareToggleBtn.classList.add('active');
           screenShareToggleBtn.textContent = 'Detener Pantalla';
           
           screenStream.getVideoTracks()[0].addEventListener('ended', stopScreenShare);
-          updateStreamUrl();
-          startWebcamLoop();
+          startCaptureLoop(screenVideoEl, 'Pantalla_Compartida', () => isScreenActive);
         } catch (err) {
           if (err.name !== 'NotAllowedError') alert('Error: ' + err.message);
           stopScreenShare();
@@ -421,8 +477,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function stopScreenShare() {
-    isWebcamActive = false;
-    webcamLoopActive = false;
+    isScreenActive = false;
     if (screenStream) {
       screenStream.getTracks().forEach(track => track.stop());
       screenStream = null;
@@ -431,49 +486,49 @@ document.addEventListener('DOMContentLoaded', () => {
       screenShareToggleBtn.classList.remove('active');
       screenShareToggleBtn.textContent = 'Transmitir Pantalla';
     }
-    updateStreamUrl();
   }
 
   function stopWebcam() {
     isWebcamActive = false;
-    webcamLoopActive = false;
     if (webcamStream) {
       webcamStream.getTracks().forEach(track => track.stop());
       webcamStream = null;
     }
-    webcamToggleBtn.classList.remove('active');
-    webcamToggleBtn.textContent = 'Activar Cámara';
-    updateStreamUrl();
+    if (webcamToggleBtn) {
+      webcamToggleBtn.classList.remove('active');
+      webcamToggleBtn.textContent = 'Activar Cámara';
+    }
   }
 
-  async function startWebcamLoop() {
-    webcamLoopActive = true;
-    const ctx = webcamCanvas.getContext('2d');
+  async function startCaptureLoop(videoEl, cameraId, conditionFn) {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    let isProcessing = false;
 
-    while (webcamLoopActive && isWebcamActive) {
-      const vw = webcamVideo.videoWidth || 1280;
-      const vh = webcamVideo.videoHeight || 720;
+    while (conditionFn()) {
+      const vw = videoEl.videoWidth || 1280;
+      const vh = videoEl.videoHeight || 720;
 
-      if (!isProcessingFrame && (webcamVideo.readyState >= 2 || vw > 0)) {
-        isProcessingFrame = true;
-        
-        webcamCanvas.width = vw;
-        webcamCanvas.height = vh;
-        ctx.drawImage(webcamVideo, 0, 0, vw, vh);
+      if (!isProcessing && (videoEl.readyState >= 2 || vw > 0)) {
+        isProcessing = true;
+        canvas.width = vw;
+        canvas.height = vh;
+        ctx.drawImage(videoEl, 0, 0, vw, vh);
 
-        webcamCanvas.toBlob(async (blob) => {
-          if (!blob) return (isProcessingFrame = false);
+        canvas.toBlob(async (blob) => {
+          if (!blob) return (isProcessing = false);
           const formData = new FormData();
           formData.append('file', blob, 'frame.jpg');
+          formData.append('camera_id', cameraId);
 
           try {
             await fetch('/api/webcam_frame', { method: 'POST', body: formData });
           } catch (err) {} finally {
-            isProcessingFrame = false;
+            isProcessing = false;
           }
-        }, 'image/jpeg', 0.85);
+        }, 'image/jpeg', 0.8);
       }
-      await new Promise(r => setTimeout(r, 40));
+      await new Promise(r => setTimeout(r, Math.max(33, 1000 / parseInt(maxFpsSelect.value || 30))));
     }
   }
 
@@ -953,6 +1008,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Polling de Telemetría cada 1 segundo
   async function fetchStatus() {
     try {
+      // También verificamos si hay cámaras nuevas (Webcam/Pantalla agregada dinámicamente)
+      loadCameras();
+      
       const res = await fetch('/api/status');
       if (res.ok) {
         const data = await res.json();
@@ -967,6 +1025,67 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   setInterval(fetchStatus, 1000);
   fetchStatus();
+
+  // Polling de Alertas en Tiempo Real
+  let lastAlertIndex = -1;
+
+  async function pollLiveAlerts() {
+    if (!liveAlertsContainer) return;
+    try {
+      const res = await fetch('/api/logs?limit=20');
+      const logs = await res.json();
+      
+      if (!logs || logs.length === 0) return;
+      
+      const newAlerts = [];
+      // Buscar alertas nuevas
+      for (let i = 0; i < logs.length; i++) {
+        if (logs[i].id > lastAlertIndex || lastAlertIndex === -1) {
+          newAlerts.push(logs[i]);
+          if (logs[i].id > lastAlertIndex) lastAlertIndex = logs[i].id;
+        }
+      }
+      
+      // Si lastAlertIndex era -1, inicializamos con los ultimos 5 para no llenar
+      if (lastAlertIndex === -1 && newAlerts.length > 5) {
+        newAlerts.splice(5); 
+      }
+      
+      if (newAlerts.length > 0) {
+        if (liveAlertsContainer.innerHTML.includes('Esperando eventos')) {
+          liveAlertsContainer.innerHTML = '';
+        }
+        
+        newAlerts.reverse().forEach(alert => {
+          const isDanger = alert.status === 'No Registrado' || alert.name === 'Desconocido';
+          const borderColor = isDanger ? '#ef4444' : '#10b981';
+          
+          const alertEl = document.createElement('div');
+          alertEl.style = `background: rgba(0,0,0,0.4); border-left: 4px solid ${borderColor}; padding: 10px; border-radius: 6px; margin-bottom: 8px; font-size: 0.85rem; color: #fff; animation: fade-in 0.3s ease;`;
+          alertEl.innerHTML = `
+            <div style="display:flex; justify-content:space-between; margin-bottom:4px; color:var(--text-muted); font-size:0.75rem;">
+              <span>${alert.timestamp} | ${alert.camera_id}</span>
+              <span style="color:${borderColor}; font-weight:700;">${alert.status}</span>
+            </div>
+            <div style="display:flex; gap: 10px; align-items:center;">
+              <img src="${alert.image}" style="width: 50px; height: 50px; border-radius: 4px; object-fit: cover;">
+              <div style="font-weight: 600;">${alert.name}</div>
+            </div>
+          `;
+          liveAlertsContainer.prepend(alertEl);
+        });
+        
+        // Mantener maximo 15 alertas en la vista
+        while (liveAlertsContainer.children.length > 15) {
+          liveAlertsContainer.removeChild(liveAlertsContainer.lastChild);
+        }
+      }
+    } catch (err) {}
+  }
+  
+  if (liveAlertsContainer) {
+    setInterval(pollLiveAlerts, 2000);
+  }
 
   // Inicialización de Modelos y Cámaras
   loadModels();

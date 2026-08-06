@@ -257,8 +257,8 @@ class AutoFramingEngine:
             cropped_frame = frame.copy()
 
         # Redimensionar salida a resolución estándar (ej. 1280x720 o manteniendo relación)
-        out_w = settings.OUTPUT_WIDTH
-        out_h = int(out_w / target_ratio) if target_ratio else settings.OUTPUT_HEIGHT
+        out_w = getattr(settings, 'OUTPUT_WIDTH', 1280)
+        out_h = int(out_w / target_ratio) if target_ratio else getattr(settings, 'OUTPUT_HEIGHT', 720)
         auto_framed_output = cv2.resize(cropped_frame, (out_w, out_h), interpolation=cv2.INTER_LINEAR)
 
         # 7. Renderizar Overlays Informativos en el Frame Original y en el Encuadre

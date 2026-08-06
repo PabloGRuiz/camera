@@ -6,7 +6,7 @@ from typing import Optional, List
 import base64
 from datetime import datetime
 from collections import deque
-from fastapi import APIRouter, Query, HTTPException, File, UploadFile, Response, BackgroundTasks, Security, Depends
+from fastapi import APIRouter, Query, HTTPException, File, UploadFile, Response, BackgroundTasks, Security, Depends, Form
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel, Field
@@ -42,8 +42,6 @@ last_logged_times = {}
 
 router = APIRouter()
 
-detector = OpenVINODetector()
-
 pipeline_stats = {
     "fps": 0.0,
     "inference_latency_ms": 0.0,
@@ -72,11 +70,16 @@ class CameraControlModel(BaseModel):
 
 @router.get("/health")
 async def health_check():
+    # Usar el dispositivo de la primera cámara o CPU por defecto
+    device = "CPU"
+    if camera_manager._camera_ids:
+        det = camera_manager.get_detector(camera_manager._camera_ids[0])
+        if det: device = det.device
     return {
         "status": "healthy",
         "app_title": settings.APP_TITLE,
         "version": settings.APP_VERSION,
-        "openvino_device": detector.device,
+        "openvino_device": device,
         "active_model_path": settings.MODEL_PATH,
         "active_cameras": camera_manager._camera_ids
     }
@@ -104,7 +107,9 @@ async def update_settings(payload: SettingsUpdateModel):
             settings.TARGET_CLASSES = None
         else:
             settings.TARGET_CLASSES = payload.target_classes
-        detector.active_trackers.clear()
+        for cam_id in camera_manager._camera_ids:
+            det = camera_manager.get_detector(cam_id)
+            if det: det.active_trackers.clear()
         settings.ENABLE_SYMBOL_RECOGNITION = False 
         symbol_recognition_cache.clear()
     if payload.detection_paused is not None:
@@ -112,7 +117,10 @@ async def update_settings(payload: SettingsUpdateModel):
     if payload.active_model is not None:
         new_path = "models/military_assets_yolov8n_openvino_model" if payload.active_model.upper() == "MILITARY" else "models/yolov8n_openvino_model"
         if settings.MODEL_PATH != new_path:
-            detector.reload_model(new_path)
+            settings.MODEL_PATH = new_path
+            for cam_id in camera_manager._camera_ids:
+                det = camera_manager.get_detector(cam_id)
+                if det: det.reload_model(new_path)
             face_recognition_cache.clear()
     if payload.max_fps is not None:
         settings.MAX_FPS = payload.max_fps
@@ -126,6 +134,13 @@ async def control_camera(payload: CameraControlModel):
             camera_manager.add_camera(payload.camera_id, payload.source)
     elif payload.action == "remove":
         camera_manager.remove_camera(payload.camera_id)
+        # Notificar al servidor central sobre la desconexión
+        send_to_central_server_async({
+            "camera_id": payload.camera_id,
+            "event_type": "Sistema",
+            "person_name": "Alerta de Red",
+            "role": "Cámara Desconectada"
+        })
     elif payload.action == "fix":
         camera_manager.fixed_camera_id = payload.camera_id if payload.camera_id in camera_manager.cameras else None
     return {"status": "success", "fixed_camera": camera_manager.fixed_camera_id, "cameras": camera_manager._camera_ids}
@@ -140,11 +155,15 @@ async def list_cameras():
 
 @router.get("/api/status")
 async def get_status():
+    device = "CPU"
+    if camera_manager._camera_ids:
+        det = camera_manager.get_detector(camera_manager._camera_ids[0])
+        if det: device = det.device
     return {
         "fps": round(pipeline_stats["fps"], 1),
         "inference_latency_ms": round(pipeline_stats["inference_latency_ms"], 1),
         "frame_count": pipeline_stats["frame_count"],
-        "openvino_device": detector.device,
+        "openvino_device": device,
         "detection_paused": settings.DETECTION_PAUSED,
         "telemetry": pipeline_stats["last_telemetry"],
         "active_cameras": camera_manager._camera_ids,
@@ -419,51 +438,78 @@ def generate_mjpeg_stream(camera_id: str, mode: str, background_tasks: Backgroun
                 time.sleep(0.01)
                 continue
                 
-            active_infer_cam = camera_manager.get_active_inference_camera()
-            perform_inference = not settings.DETECTION_PAUSED and (active_infer_cam == camera_id)
+            motion_detector = camera_manager.get_motion_detector(camera_id)
+            has_motion = True
+            if motion_detector is not None:
+                # Resize frame for faster motion detection
+                small_frame = cv2.resize(frame, (320, 180))
+                fg_mask = motion_detector.apply(small_frame)
+                # Count white pixels (motion)
+                motion_pixels = cv2.countNonZero(fg_mask)
+                has_motion = motion_pixels > 200 # Threshold for motion
 
-            if not perform_inference:
+            # Always perform inference if not paused, there is motion, and according to FRAME_SKIP
+            frame_count = getattr(reader, 'frame_count', 0)
+            is_inference_frame = (frame_count % settings.FRAME_SKIP == 0)
+            perform_inference = (not settings.DETECTION_PAUSED) and has_motion and is_inference_frame
+            
+            camera_detector = camera_manager.get_detector(camera_id)
+
+            if not perform_inference or not camera_detector:
                 tracked_objects = []
+                if camera_detector:
+                    # Manually extrapolate objects if skipping frame due to no motion
+                    for track_id, t_info in camera_detector.active_trackers.items():
+                        t_info["bbox"][0] += t_info["vx"]
+                        t_info["bbox"][1] += t_info["vy"]
+                        t_info["bbox"][2] += t_info["vx"]
+                        t_info["bbox"][3] += t_info["vy"]
+                        tracked_objects.append({
+                            "track_id": track_id,
+                            "class_id": t_info.get("class_id"),
+                            "class_name": t_info.get("class_name"),
+                            "confidence": t_info.get("confidence"),
+                            "bbox": [round(c, 1) for c in t_info["bbox"]]
+                        })
                 infer_latency = 0.0
             else:
                 start_infer = time.time()
-                tracked_objects = detector.detect_and_track(frame, conf=settings.CONFIDENCE_THRESHOLD)
+                tracked_objects = camera_detector.detect_and_track(frame, conf=settings.CONFIDENCE_THRESHOLD)
                 infer_latency = (time.time() - start_infer) * 1000.0
+            
+            for obj in tracked_objects:
+                c_id = obj.get("class_id")
+                c_name = str(obj.get("class_name", "")).lower()
+                t_id = obj.get("track_id")
+                # Persona / Soldado
+                if c_id in [0, 5, 6] or any(p in c_name for p in ["person", "soldier", "soldado", "civil"]):
+                    if t_id is not None:
+                        cache_key = f"{camera_id}_{t_id}"
+                        if face_recognition_cache.get(cache_key) is None:
+                            match_info = face_recognizer.recognize_face_in_bbox(frame, obj["bbox"])
+                            if match_info:
+                                face_recognition_cache[cache_key] = match_info
+                        
+                        match_info = face_recognition_cache.get(cache_key) or {"name": "Desconocido", "role": "No Registrado"}
+                        obj["face_identity"] = match_info
+                        _log_person_capture(camera_id, t_id, frame, obj["bbox"], match_info)
 
-                for obj in tracked_objects:
-                    c_id = obj.get("class_id")
-                    c_name = str(obj.get("class_name", "")).lower()
+                # Vehículos (Autos, Camiones, Tanques, Motos, etc.)
+                vehicle_keywords = ["car", "auto", "vehiculo", "vehicle", "truck", "camion", "bus", "colectivo", "motorcycle", "moto", "tank", "tanque", "object"]
+                if c_id in [1, 2, 3, 4, 5, 7, 8, 10] or any(v in c_name for v in vehicle_keywords):
+                    if t_id is not None and not any(p in c_name for p in ["person", "soldier", "soldado", "civil"]):
+                        _log_vehicle_capture(camera_id, t_id, frame, obj["bbox"], c_name)
+                
+                if settings.ENABLE_SYMBOL_RECOGNITION:
                     t_id = obj.get("track_id")
-                    
-                    # Persona / Soldado
-                    if c_id in [0, 5, 6] or any(p in c_name for p in ["person", "soldier", "soldado", "civil"]):
-                        if t_id is not None:
-                            cache_key = f"{camera_id}_{t_id}"
-                            if face_recognition_cache.get(cache_key) is None:
-                                match_info = face_recognizer.recognize_face_in_bbox(frame, obj["bbox"])
-                                if match_info:
-                                    face_recognition_cache[cache_key] = match_info
-                            
-                            match_info = face_recognition_cache.get(cache_key) or {"name": "Desconocido", "role": "No Registrado"}
-                            obj["face_identity"] = match_info
-                            _log_person_capture(camera_id, t_id, frame, obj["bbox"], match_info)
-
-                    # Vehículos (Autos, Camiones, Tanques, Motos, etc.)
-                    vehicle_keywords = ["car", "auto", "vehiculo", "vehicle", "truck", "camion", "bus", "colectivo", "motorcycle", "moto", "tank", "tanque", "object"]
-                    if c_id in [1, 2, 3, 4, 5, 7, 8, 10] or any(v in c_name for v in vehicle_keywords):
-                        if t_id is not None and not any(p in c_name for p in ["person", "soldier", "soldado", "civil"]):
-                            _log_vehicle_capture(camera_id, t_id, frame, obj["bbox"], c_name)
-                    
-                    if settings.ENABLE_SYMBOL_RECOGNITION:
-                        t_id = obj.get("track_id")
-                        if t_id is not None:
-                            cache_key = f"{camera_id}_{t_id}"
-                            if symbol_recognition_cache.get(cache_key) is None:
-                                sym_match = symbol_recognizer.recognize_symbol_in_bbox(frame, obj["bbox"])
-                                if sym_match:
-                                    symbol_recognition_cache[cache_key] = sym_match
-                            if symbol_recognition_cache.get(cache_key):
-                                obj["symbol_identity"] = symbol_recognition_cache[cache_key]
+                    if t_id is not None:
+                        cache_key = f"{camera_id}_{t_id}"
+                        if symbol_recognition_cache.get(cache_key) is None:
+                            sym_match = symbol_recognizer.recognize_symbol_in_bbox(frame, obj["bbox"])
+                            if sym_match:
+                                symbol_recognition_cache[cache_key] = sym_match
+                        if symbol_recognition_cache.get(cache_key):
+                            obj["symbol_identity"] = symbol_recognition_cache[cache_key]
 
             auto_framed_output, annotated_frame, telemetry = framing_engine.process_frame(
                 frame, tracked_objects, draw_overlay=settings.DRAW_OVERLAYS
@@ -536,9 +582,9 @@ async def video_feed(background_tasks: BackgroundTasks,
     )
 
 @router.post("/api/webcam_frame")
-async def receive_webcam_frame(file: UploadFile = File(...)):
+async def receive_webcam_frame(camera_id: str = Form("Webcam Local"), file: UploadFile = File(...)):
     """
-    Recibe un fotograma de la webcam del navegador y lo inyecta en el motor de video de la primera cámara.
+    Recibe un fotograma de la webcam o pantalla del navegador y lo inyecta en el motor de video.
     """
     if file.size and file.size > 2 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="Frame muy grande")
@@ -548,12 +594,13 @@ async def receive_webcam_frame(file: UploadFile = File(...)):
     if nparr.size > 0:
         frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if frame is not None:
-            if camera_manager._camera_ids:
-                cam_id = camera_manager._camera_ids[0]
-                reader = camera_manager.get_reader(cam_id)
-                if reader:
-                    reader.push_frame(frame)
-    return {"status": "ok"}
+            if camera_id not in camera_manager.cameras:
+                camera_manager.add_camera(camera_id, "virtual")
+            
+            reader = camera_manager.get_reader(camera_id)
+            if reader:
+                reader.push_frame(frame)
+    return {"status": "success"}
 
 class EnrollB64Model(BaseModel):
     name: str = Field(..., max_length=50)

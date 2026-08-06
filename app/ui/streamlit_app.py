@@ -81,10 +81,10 @@ try:
                     except Exception as ex:
                         st.sidebar.error(f"Error: {ex}")
     else:
-        selected_view_cam = None
+        selected_view_cams = None
         st.sidebar.error("Error obteniendo cámaras.")
 except Exception as e:
-    selected_view_cam = None
+    selected_view_cams = None
     st.sidebar.warning(f"No se pudo conectar a FastAPI: {e}")
 
 st.sidebar.header("Parámetros de Auto-Framing")
