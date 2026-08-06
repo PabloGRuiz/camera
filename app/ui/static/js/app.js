@@ -528,9 +528,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (!isProcessing && (videoEl.readyState >= 2 || vw > 0)) {
         isProcessing = true;
-        canvas.width = vw;
-        canvas.height = vh;
-        ctx.drawImage(videoEl, 0, 0, vw, vh);
+        // Optimizacion: Escalar resolucion a maximo 854px de ancho (480p) para reducir payload de red un 80%
+        const maxW = 854;
+        const scale = Math.min(1.0, maxW / vw);
+        const cw = Math.round(vw * scale);
+        const ch = Math.round(vh * scale);
+
+        canvas.width = cw;
+        canvas.height = ch;
+        ctx.drawImage(videoEl, 0, 0, cw, ch);
 
         canvas.toBlob(async (blob) => {
           if (!blob) return (isProcessing = false);
@@ -543,9 +549,10 @@ document.addEventListener('DOMContentLoaded', () => {
           } catch (err) {} finally {
             isProcessing = false;
           }
-        }, 'image/jpeg', 0.8);
+        }, 'image/jpeg', 0.72);
       }
-      await new Promise(r => setTimeout(r, Math.max(33, 1000 / parseInt(maxFpsSelect.value || 30))));
+      const targetFps = Math.min(18, parseInt(maxFpsSelect ? maxFpsSelect.value : 15) || 15);
+      await new Promise(r => setTimeout(r, Math.max(50, Math.round(1000 / targetFps))));
     }
   }
 

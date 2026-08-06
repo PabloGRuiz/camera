@@ -552,7 +552,7 @@ def generate_mjpeg_stream(camera_id: str, mode: str, background_tasks: Backgroun
             else:
                 output_image = auto_framed_output
 
-            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 85]
+            encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 75]
             success, jpeg_buffer = cv2.imencode(".jpg", output_image, encode_param)
             if not success:
                 continue
