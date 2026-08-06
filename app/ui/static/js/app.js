@@ -517,17 +517,36 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(loadCameras, 500);
   }
 
+  function dataURItoBlob(dataURI) {
+    const byteString = atob(dataURI.split(',')[1]);
+    const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
+    }
+    return new Blob([ab], { type: mimeString });
+  }
+
   async function startCaptureLoop(videoEl, cameraId, conditionFn) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     let isProcessing = false;
+    let lastProcessingStartTime = 0;
 
     while (conditionFn()) {
       const vw = videoEl.videoWidth || 1280;
       const vh = videoEl.videoHeight || 720;
 
+      // Watchdog de seguridad: desbloquear si isProcessing quedo atascado por mas de 400ms
+      if (isProcessing && (Date.now() - lastProcessingStartTime > 400)) {
+        isProcessing = false;
+      }
+
       if (!isProcessing && (videoEl.readyState >= 2 || vw > 0)) {
         isProcessing = true;
+        lastProcessingStartTime = Date.now();
+
         // Optimizacion: Escalar resolucion a 640px de ancho (360p) para envios ultrarrapidos de < 12KB
         const maxW = 640;
         const scale = Math.min(1.0, maxW / vw);
@@ -538,11 +557,9 @@ document.addEventListener('DOMContentLoaded', () => {
         canvas.height = ch;
         ctx.drawImage(videoEl, 0, 0, cw, ch);
 
-        canvas.toBlob((blob) => {
-          if (!blob) {
-            isProcessing = false;
-            return;
-          }
+        try {
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.60);
+          const blob = dataURItoBlob(dataUrl);
           const formData = new FormData();
           formData.append('file', blob, 'frame.jpg');
           formData.append('camera_id', cameraId);
@@ -552,9 +569,11 @@ document.addEventListener('DOMContentLoaded', () => {
             .finally(() => {
               isProcessing = false;
             });
-        }, 'image/jpeg', 0.65);
+        } catch (e) {
+          isProcessing = false;
+        }
       }
-      await new Promise(r => setTimeout(r, 35)); // Loop fluido de 25 FPS sin bloqueos
+      await new Promise(r => setTimeout(r, 40)); // Loop constante y fluido
     }
   }
 

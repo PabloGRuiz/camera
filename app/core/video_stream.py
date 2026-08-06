@@ -136,8 +136,8 @@ class VideoStreamReader:
         frame_interval = 1.0 / float(self.target_fps)
         while not self.stopped:
             start_time = time.time()
-            # Si se han enviado fotogramas de webcam en los últimos 2 segundos, priorizar la webcam
-            is_client_webcam_active = hasattr(self, "last_pushed_time") and (time.time() - self.last_pushed_time < 2.0)
+            # Si se han enviado fotogramas de webcam en los últimos 5 segundos, priorizar la webcam
+            is_client_webcam_active = hasattr(self, "last_pushed_time") and (time.time() - self.last_pushed_time < 5.0)
             
             if self.is_synthetic and not is_client_webcam_active:
                 frame = self.synthetic_gen.generate_frame()
