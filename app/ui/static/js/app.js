@@ -528,8 +528,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (!isProcessing && (videoEl.readyState >= 2 || vw > 0)) {
         isProcessing = true;
-        // Optimizacion: Escalar resolucion a maximo 854px de ancho (480p) para reducir payload de red un 80%
-        const maxW = 854;
+        // Optimizacion: Escalar resolucion a 640px de ancho (360p) para envios ultrarrapidos de < 12KB
+        const maxW = 640;
         const scale = Math.min(1.0, maxW / vw);
         const cw = Math.round(vw * scale);
         const ch = Math.round(vh * scale);
@@ -538,21 +538,23 @@ document.addEventListener('DOMContentLoaded', () => {
         canvas.height = ch;
         ctx.drawImage(videoEl, 0, 0, cw, ch);
 
-        canvas.toBlob(async (blob) => {
-          if (!blob) return (isProcessing = false);
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            isProcessing = false;
+            return;
+          }
           const formData = new FormData();
           formData.append('file', blob, 'frame.jpg');
           formData.append('camera_id', cameraId);
 
-          try {
-            await fetch('/api/webcam_frame', { method: 'POST', body: formData });
-          } catch (err) {} finally {
-            isProcessing = false;
-          }
-        }, 'image/jpeg', 0.72);
+          fetch('/api/webcam_frame', { method: 'POST', body: formData })
+            .catch(() => {})
+            .finally(() => {
+              isProcessing = false;
+            });
+        }, 'image/jpeg', 0.65);
       }
-      const targetFps = Math.min(18, parseInt(maxFpsSelect ? maxFpsSelect.value : 15) || 15);
-      await new Promise(r => setTimeout(r, Math.max(50, Math.round(1000 / targetFps))));
+      await new Promise(r => setTimeout(r, 35)); // Loop fluido de 25 FPS sin bloqueos
     }
   }
 

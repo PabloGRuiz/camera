@@ -97,6 +97,11 @@ class VideoStreamReader:
                     self.cap = cv2.VideoCapture(src_val, cv2.CAP_DSHOW)
                     if not self.cap.isOpened():
                         self.cap = cv2.VideoCapture(src_val)
+                    if self.cap.isOpened():
+                        self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+                        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+                        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+                        self.cap.set(cv2.CAP_PROP_FPS, 30)
                 else:
                     self.cap = cv2.VideoCapture(src_val)
 
