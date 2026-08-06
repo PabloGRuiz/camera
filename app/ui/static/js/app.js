@@ -436,6 +436,7 @@ document.addEventListener('DOMContentLoaded', () => {
           webcamToggleBtn.textContent = 'Detener Cámara';
           
           startCaptureLoop(webcamVideoEl, 'Webcam_Local', () => isWebcamActive);
+          setTimeout(loadCameras, 500);
         } catch (err) {
           alert('No se pudo acceder a la webcam: ' + err.message);
         }
@@ -466,6 +467,7 @@ document.addEventListener('DOMContentLoaded', () => {
           
           screenStream.getVideoTracks()[0].addEventListener('ended', stopScreenShare);
           startCaptureLoop(screenVideoEl, 'Pantalla_Compartida', () => isScreenActive);
+          setTimeout(loadCameras, 500);
         } catch (err) {
           if (err.name !== 'NotAllowedError') alert('Error: ' + err.message);
           stopScreenShare();
@@ -486,6 +488,7 @@ document.addEventListener('DOMContentLoaded', () => {
       screenShareToggleBtn.classList.remove('active');
       screenShareToggleBtn.textContent = 'Transmitir Pantalla';
     }
+    setTimeout(loadCameras, 500);
   }
 
   function stopWebcam() {
@@ -498,6 +501,7 @@ document.addEventListener('DOMContentLoaded', () => {
       webcamToggleBtn.classList.remove('active');
       webcamToggleBtn.textContent = 'Activar Cámara';
     }
+    setTimeout(loadCameras, 500);
   }
 
   async function startCaptureLoop(videoEl, cameraId, conditionFn) {
@@ -1087,4 +1091,5 @@ document.addEventListener('DOMContentLoaded', () => {
   // Inicialización de Modelos y Cámaras
   loadModels();
   loadCameras();
+  setInterval(loadCameras, 2500);
 });
