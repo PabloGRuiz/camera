@@ -190,9 +190,11 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderVideoWall() {
     if (!videoWallContainer) return;
     
-    // Maintain existing elements like webcamVideo if any, but clear old streams
+    // Maintain existing elements like webcamVideo if any, but clear old streams to close sockets
     Array.from(videoWallContainer.children).forEach(child => {
       if (child.id !== 'webcamVideo' && child.id !== 'webcamCanvas') {
+        const streamImg = child.querySelector('img');
+        if (streamImg) streamImg.src = '';
         videoWallContainer.removeChild(child);
       }
     });
@@ -245,15 +247,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function removeCamera(camId) {
     try {
+      // Force close browser MJPEG stream socket immediately
+      const cellImgs = videoWallContainer ? videoWallContainer.querySelectorAll('.camera-cell img') : [];
+      cellImgs.forEach(img => {
+        if (img.src.includes(`camera_id=${encodeURIComponent(camId)}`)) {
+          img.src = '';
+        }
+      });
+
       const res = await fetch('/api/camera/control', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
         body: JSON.stringify({ action: 'remove', camera_id: camId })
       });
       if (res.ok) {
+        availableCameras = availableCameras.filter(c => c !== camId);
         loadCameras();
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('Error desconectando cámara:', e);
+    }
   }
 
   function updateStreamUrl() {

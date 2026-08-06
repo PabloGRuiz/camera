@@ -416,6 +416,7 @@ def _log_vehicle_capture(camera_id: str, t_id: int, frame: np.ndarray, bbox: Lis
 
 def generate_mjpeg_stream(camera_id: str, mode: str, background_tasks: BackgroundTasks):
     last_frame_time = time.time()
+    consecutive_failures = 0
     
     reader = camera_manager.get_reader(camera_id)
     framing_engine = camera_manager.get_framing_engine(camera_id)
@@ -426,6 +427,10 @@ def generate_mjpeg_stream(camera_id: str, mode: str, background_tasks: Backgroun
 
     while True:
         try:
+            if getattr(reader, 'stopped', False) or camera_manager.get_reader(camera_id) is None:
+                logger.info(f"Terminando stream MJPEG para la cámara removida: {camera_id}")
+                break
+
             if settings.MAX_FPS > 0:
                 now = time.time()
                 elapsed = now - last_frame_time
@@ -435,8 +440,14 @@ def generate_mjpeg_stream(camera_id: str, mode: str, background_tasks: Backgroun
 
             ret, frame = reader.read()
             if not ret or frame is None:
-                time.sleep(0.01)
+                consecutive_failures += 1
+                if consecutive_failures > 30 or getattr(reader, 'stopped', False):
+                    logger.info(f"Stream finalizado por falta de frames en cámara: {camera_id}")
+                    break
+                time.sleep(0.02)
                 continue
+
+            consecutive_failures = 0
                 
             motion_detector = camera_manager.get_motion_detector(camera_id)
             has_motion = True
