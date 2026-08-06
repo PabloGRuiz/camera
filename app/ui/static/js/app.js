@@ -1004,6 +1004,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const refreshLogsBtn = document.getElementById('refreshLogsBtn');
   const clearLogsBtn = document.getElementById('clearLogsBtn');
 
+  window.deleteSingleLog = async function(id) {
+    if (!confirm('¿Deseas eliminar este registro de la base de datos?')) return;
+    try {
+      const res = await fetch(`/api/logs/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        loadLogs();
+      }
+    } catch (e) {
+      console.error('Error eliminando registro:', e);
+    }
+  };
+
   async function loadLogs() {
     if (!logsGrid) return;
     try {
@@ -1020,16 +1032,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const borderColor = isRegistered ? 'var(--accent-teal)' : '#f87171';
         const badgeBg = isRegistered ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)';
         return `
-          <div style="background: rgba(0,0,0,0.4); border: 1px solid ${borderColor}; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column;">
+          <div style="background: rgba(0,0,0,0.4); border: 1px solid ${borderColor}; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; position: relative;">
             <div style="padding: 8px 12px; background: rgba(0,0,0,0.6); display: flex; justify-content: space-between; align-items: center;">
-              <span style="font-size: 0.8rem; font-weight: 600; color: var(--accent-cyan);">Hora: ${log.timestamp}</span>
-              <span style="font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; background: ${badgeBg}; color: ${borderColor}; font-weight: 600;">${log.status}</span>
+              <span style="font-size: 0.8rem; font-weight: 600; color: var(--accent-cyan);">${log.timestamp}</span>
+              <div style="display: flex; gap: 6px; align-items: center;">
+                <span style="font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; background: ${badgeBg}; color: ${borderColor}; font-weight: 600;">${log.status}</span>
+                <button onclick="deleteSingleLog(${log.id})" title="Eliminar registro" style="background: rgba(239, 68, 68, 0.25); border: 1px solid rgba(239, 68, 68, 0.5); color: #f87171; border-radius: 4px; padding: 2px 6px; font-size: 0.75rem; cursor: pointer; font-weight: 600; transition: all 0.2s ease;">🗑️</button>
+              </div>
             </div>
             <div style="width: 100%; aspect-ratio: 16/9; background: #000; overflow: hidden;">
               <img src="${log.image}" style="width: 100%; height: 100%; object-fit: cover;" alt="${log.name}">
             </div>
-            <div style="padding: 8px 12px; font-weight: 600; font-size: 0.9rem; color: #fff;">
-              ${log.name}
+            <div style="padding: 8px 12px; font-weight: 600; font-size: 0.9rem; color: #fff; display: flex; justify-content: space-between; align-items: center;">
+              <span>${log.name}</span>
+              <span style="font-size: 0.75rem; color: var(--text-muted);">${log.camera_id}</span>
             </div>
           </div>
         `;
@@ -1044,9 +1060,13 @@ document.addEventListener('DOMContentLoaded', () => {
     clearLogsBtn.addEventListener('click', async () => {
       if (!confirm('¿Deseas vaciar todo el historial de capturas?')) return;
       try {
-        await fetch('/api/logs', { method: 'DELETE' });
-        loadLogs();
-      } catch (e) {}
+        const res = await fetch('/api/logs', { method: 'DELETE' });
+        if (res.ok) {
+          loadLogs();
+        }
+      } catch (e) {
+        console.error('Error vaciando historial:', e);
+      }
     });
   }
 

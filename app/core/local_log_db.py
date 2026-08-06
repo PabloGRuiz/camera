@@ -103,6 +103,13 @@ class LocalLogDatabase:
             conn.commit()
         logger.info("Historial de capturas locales vaciado con éxito.")
 
+    def delete_log_by_id(self, log_id: int) -> bool:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM local_captures WHERE id = ?", (log_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+
     def purge_old_logs(self, days_to_keep: int = 7):
         cutoff_date = (datetime.now() - timedelta(days=days_to_keep)).strftime("%Y-%m-%d")
         with self._get_connection() as conn:

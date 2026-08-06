@@ -213,12 +213,18 @@ async def get_models():
 async def get_logs(limit: int = 200, date_str: Optional[str] = None):
     return local_log_db.get_logs(limit=limit, date_str=date_str)
 
-@router.delete("/api/logs/{log_index}")
-async def delete_log(log_index: int):
-    if 0 <= log_index < len(event_logs):
-        del event_logs[log_index]
+@router.delete("/api/logs/{log_id}")
+async def delete_log(log_id: int):
+    success = local_log_db.delete_log_by_id(log_id)
+    # También limpiar de la cola en memoria si coincide
+    event_logs_list = list(event_logs)
+    for idx, item in enumerate(event_logs_list):
+        if item.get("id") == log_id:
+            del event_logs[idx]
+            break
+    if success:
         return {"status": "success"}
-    raise HTTPException(status_code=404)
+    return {"status": "success", "message": "Log cleared"}
 
 @router.delete("/api/logs")
 async def clear_all_logs():
